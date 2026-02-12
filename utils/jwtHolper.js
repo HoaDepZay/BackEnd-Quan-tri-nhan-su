@@ -16,11 +16,11 @@ const generateToken = (username, password) => {
       sqlPassEncrypted: encryptedPass,
     },
     SECRET_KEY,
-    { expiresIn: "2h" },
+    { expiresIn: "3h" },
   );
 };
 
-// Hàm xác thực Token (Verify) - dùng cho Middleware
+// Hàm xác thực Token (Verifysfrgsr) - dùng cho Middleware
 const verifyToken = (token) => {
   return jwt.verify(token, SECRET_KEY);
 };
