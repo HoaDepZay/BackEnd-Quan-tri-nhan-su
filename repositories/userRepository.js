@@ -1,36 +1,62 @@
 const sql = require("mssql");
 
 const userRepository = {
-  /**
-   * Gọi Procedure đăng ký nhân viên mới kèm mã OTP
-   */
-  registerUser: async (userData) => {
-    // 1. Khởi tạo request từ connection pool (giả sử bạn đã config mssql)
+  // 1. Lưu thông tin vào bảng đệm DANG_KY_CHO
+  savePendingRegistration: async (data) => {
     const request = new sql.Request();
-
-    // 2. Map các tham số từ Node.js vào các biến @ của Procedure
     return await request
-      .input("Username", sql.NVarChar, userData.username)
-      .input("Password", sql.NVarChar, userData.password)
-      .input("HoTen", sql.NVarChar, userData.hoten)
-      .input("Email", sql.NVarChar, userData.email)
-      .input("MaPhg", sql.Int, userData.maphg)
-      .input("Luong", sql.Decimal(18, 2), userData.luong)
-      .input("ChucVu", sql.NVarChar, userData.chucvu)
-      .input("OtpCode", sql.NVarChar, userData.otpCode) // <--- Truyền mã OTP ngẫu nhiên vào đây
-      .input("ExpiredAt", sql.DateTime, userData.expiredAt) // <--- Truyền thời gian hết hạn
-      .execute("sp_DangKyUserMoi"); // <--- Tên Procedure bạn vừa tạo
+      .input("MaNV", sql.NVarChar, data.manv)
+      .input("Email", sql.NVarChar, data.email)
+      .input("PassEnc", sql.NVarChar, data.encryptedPass)
+      .input("HoTen", sql.NVarChar, data.hoten)
+      .input("MaPhg", sql.Int, data.maphg)
+      .input("Luong", sql.Decimal(18, 2), data.luong)
+      .input("ChucVu", sql.NVarChar, data.chucvu)
+      .input("OtpCode", sql.NVarChar, data.otpCode)
+      .input("ExpiredAt", sql.DateTime, data.expiredAt)
+      .execute("sp_LuuDangKyTam");
   },
 
-  /**
-   * Gọi Procedure xác thực OTP (đã tạo ở bước trước)
-   */
-  verifyOTP: async (email, otpCode) => {
+  // 2. Lấy thông tin từ bảng đệm để verify
+  getPendingAccount: async (email) => {
+    const request = new sql.Request();
+    const result = await request
+      .input("Email", sql.NVarChar, email)
+      .query("SELECT * FROM DANG_KY_CHO WHERE Email = @Email");
+    return result.recordset[0];
+  },
+
+  // 3. Chạy Procedure kích hoạt tài khoản thật trên SQL Server
+  activateAccount: async (data) => {
+    const request = new sql.Request();
+    return await request
+      .input("MaNV", sql.NVarChar, data.MaNV)
+      .input("Email", sql.NVarChar, data.Email)
+      .input("Password", sql.NVarChar, data.originalPassword)
+      .input("HoTen", sql.NVarChar, data.HoTen)
+      .input("MaPhg", sql.Int, data.MaPhg)
+      .input("Luong", sql.Decimal(18, 2), data.Luong)
+      .input("ChucVu", sql.NVarChar, data.ChucVu)
+      .execute("sp_KichHoatTaiKhoanChinhThuc");
+  },
+
+  // 4. Xóa bảng đệm
+  deletePendingAccount: async (email) => {
     const request = new sql.Request();
     return await request
       .input("Email", sql.NVarChar, email)
-      .input("OtpCode", sql.NVarChar, otpCode)
-      .execute("sp_VerifyOTP");
+      .query("DELETE FROM DANG_KY_CHO WHERE Email = @Email");
+  },
+
+  // 5. Lấy thông tin nhân viên (không lấy mật khẩu)
+  getUserByEmail: async (email) => {
+    const request = new sql.Request();
+    const result = await request
+      .input("Email", sql.NVarChar, email)
+      .query(
+        "SELECT MANV, HOTEN, EMAIL, CHUCVU, IsVerified FROM NHANVIEN WHERE EMAIL = @Email",
+      );
+    return result; // Trả về nguyên result để Service dùng recordset.length
   },
 };
 

@@ -16,19 +16,23 @@ const register = async (req, res) => {
   }
 };
 
+// src/controllers/authController.js
 const verifyOtp = async (req, res) => {
   try {
     const { email, otpCode } = req.body;
     const result = await authService.verifyOTP(email, otpCode);
 
-    if (result.Success) {
-      return res.status(200).json({ success: true, message: result.Message });
-    } else {
-      return res.status(400).json({ success: false, message: result.Message });
-    }
+    // Debug: Xem thực tế Service trả về cái gì
+    console.log("Kết quả từ Service:", result);
+
+    // Trả về trực tiếp đối tượng result (đã có success và message)
+    return res.status(200).json(result);
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Lỗi tại Controller:", error.message);
+    return res.status(400).json({
+      success: false, // Ở đây dùng viết thường cho đồng bộ với Frontend
+      message: error.message,
+    });
   }
 };
-
 module.exports = { register, verifyOtp };
