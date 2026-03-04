@@ -1,16 +1,27 @@
-// config/db.js
+const sql = require("mssql");
 require("dotenv").config();
 
-// Kiểm tra xem biến môi trường có lấy được không (quan trọng)
-const server = process.env.DB_SERVER;
-const dbName = process.env.DB_NAME;
-const user = process.env.DB_USER;
-const pass = process.env.DB_PASS;
-
-const connectionString = `Driver={ODBC Driver 17 for SQL Server};Server=${server};Database=${dbName};UID=${user};PWD=${pass};TrustServerCertificate=yes;Connection Timeout=30;`;
-
-// 👇👇 QUAN TRỌNG: Phải xuất ra dưới dạng Object
-module.exports = {
-  connectionString,
-  adminConnectionString: connectionString,
+const config = {
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  server: process.env.DB_SERVER,
+  port: parseInt(process.env.DB_PORT) || 1433,
+  database: process.env.DB_NAME,
+  options: {
+    encrypt: false, // Để false nếu dùng SQL Server cục bộ
+    trustServerCertificate: true,
+  },
 };
+
+// Hàm kết nối DB
+const connectDB = async () => {
+  try {
+    await sql.connect(config);
+    console.log("✅ Đã kết nối SQL Server thành công (Global Pool)");
+  } catch (err) {
+    console.error("❌ Lỗi kết nối SQL Server:", err.message);
+    process.exit(1); // Dừng server nếu không kết nối được DB
+  }
+};
+
+module.exports = { connectDB, sql };
