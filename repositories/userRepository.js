@@ -54,7 +54,7 @@ const userRepository = {
     const result = await request
       .input("Email", sql.NVarChar, email)
       .query(
-        "SELECT MANV, HOTEN, EMAIL, CHUCVU, IsVerified FROM NHANVIEN WHERE EMAIL = @Email",
+        "SELECT MANV, HOTEN, EMAIL, CHUCVU  FROM NHANVIEN WHERE EMAIL = @Email",
       );
     return result; // Trả về nguyên result để Service dùng recordset.length
   },
