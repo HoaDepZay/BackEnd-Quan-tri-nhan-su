@@ -8,8 +8,10 @@ const config = {
   port: parseInt(process.env.DB_PORT) || 1433,
   database: process.env.DB_NAME,
   options: {
-    encrypt: false, // Để false nếu dùng SQL Server cục bộ
+    encrypt: false,
     trustServerCertificate: true,
+    connectionTimeout: 30000,
+    requestTimeout: 30000,
   },
 };
 

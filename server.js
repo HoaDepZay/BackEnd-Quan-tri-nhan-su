@@ -11,15 +11,23 @@ const adminRoutes = require("./routers/admin");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(express.json());
+// ĐẢM BẢO Body Parser được setup đúng
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors());
 
-// --- ROUTES ---
+// Middleware để debug request body
+app.use((req, res, next) => {
+  console.log(`📨 ${req.method} ${req.path}`);
+  console.log("   Body:", JSON.stringify(req.body, null, 2));
+  next();
+});
+
+// PHÂN LOẠI Endpoint
 app.use("/api/auth", authRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/admin", adminRoutes);
 
-// --- KẾT NỐI DB VÀ CHẠY SERVER ---
 console.log("🔍 Đang kết nối Database...");
 
 // Sử dụng hàm connectDB (async) đã viết ở db.js

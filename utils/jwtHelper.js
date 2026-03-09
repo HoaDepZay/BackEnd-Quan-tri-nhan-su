@@ -5,14 +5,25 @@ const CryptoJS = require("crypto-js");
 const SECRET_KEY = process.env.SECRET_KEY || "DoAn_BaoMat_RatCao";
 
 // Hàm tạo Token (Sign)
-const generateToken = (username, password) => {
+const generateToken = (userData, password) => {
+  // userData có thể là string (email) hoặc object với thông tin user
+  if (typeof userData === "string") {
+    userData = { email: userData };
+  }
+
   // Logic mã hóa password của bạn
   const encryptedPass = CryptoJS.AES.encrypt(password, SECRET_KEY).toString();
 
   // Tạo và trả về token
   return jwt.sign(
     {
-      sqlUser: username,
+      userEmail: userData.email,
+      userInfo: {
+        manv: userData.manv || "",
+        hoten: userData.hoten || "",
+        email: userData.email || "",
+        role: userData.role || "",
+      },
       sqlPassEncrypted: encryptedPass,
     },
     SECRET_KEY,

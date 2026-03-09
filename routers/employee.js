@@ -2,9 +2,13 @@ const express = require("express");
 const router = express.Router();
 const sql = require("msnodesqlv8");
 const withUserConnection = require("../middleware/authMiddleware");
-const { connectionString } = require("../config/db");
+const employeeController = require("../controllers/employeeController");
+const { sql: globalSql } = require("../config/db");
 
-// 1. Xem Profile (Dùng connection string động của User)
+// ⚠️ ROUTES SPECIFIC PHẢI TRƯỚC GENERIC ROUTES (/:id)
+
+// 1️⃣ SPECIFIC ROUTES (profile, my-projects, coworkers, update-info)
+// GET /api/employees/profile/:manv - Xem profile cá nhân (dùng dynamic connection)
 router.get("/profile/:manv", withUserConnection, (req, res) => {
   const query = `
     SELECT nv.MANV, nv.HOTEN, nv.LUONG, nv.CHUCVU, nv.EMAIL, pb.TENPB, hs.SO_CCCD
@@ -26,7 +30,7 @@ router.get("/profile/:manv", withUserConnection, (req, res) => {
   });
 });
 
-// 2. Xem dự án của tôi (Dùng connection string động)
+// GET /api/employees/my-projects/:manv - Xem dự án của tôi (dùng dynamic connection)
 router.get("/my-projects/:manv", withUserConnection, (req, res) => {
   const query = `SELECT da.TENDA, pc.THOIGIAN FROM PHANCONG pc JOIN DUAN da ON pc.MADA = da.MADA WHERE pc.MANV = ?`;
   sql.query(req.userConnectionString, query, [req.params.manv], (err, rows) => {
@@ -36,7 +40,7 @@ router.get("/my-projects/:manv", withUserConnection, (req, res) => {
   });
 });
 
-// 3. Xem đồng nghiệp cùng phòng (Dùng connection string động)
+// GET /api/employees/coworkers/:maphg - Xem đồng nghiệp cùng phòng (dùng dynamic connection)
 router.get("/coworkers/:maphg", withUserConnection, (req, res) => {
   sql.query(
     req.userConnectionString,
@@ -49,18 +53,35 @@ router.get("/coworkers/:maphg", withUserConnection, (req, res) => {
   );
 });
 
-// 4. Cập nhật thông tin cá nhân (Email) - Logic cũ dùng connectionString (SA)
-router.put("/update-info", (req, res) => {
-  const { manv, email } = req.body;
-  sql.query(
-    connectionString,
-    "UPDATE NHANVIEN SET EMAIL = ? WHERE MANV = ?",
-    [email, manv],
-    (err) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ message: "OK" });
-    },
-  );
+// PUT /api/employees/update-info - Cập nhật thông tin cá nhân (dùng SA connection từ global pool)
+router.put("/update-info", async (req, res) => {
+  try {
+    const { manv, email } = req.body;
+    const request = new globalSql.Request();
+    await request
+      .input("MaNV", globalSql.NVarChar, manv)
+      .input("Email", globalSql.NVarChar, email)
+      .query("UPDATE NHANVIEN SET EMAIL = @Email WHERE MANV = @MaNV");
+    res.json({ message: "Cập nhật thành công" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
+// 2️⃣ GENERIC ROUTES (list, detail, create, update, delete)
+// GET /api/employees - Lấy danh sách nhân viên
+router.get("/", employeeController.getAllEmployees);
+
+// POST /api/employees - Thêm nhân viên mới
+router.post("/", employeeController.createEmployee);
+
+// GET /api/employees/:id - Xem chi tiết 1 nhân viên
+router.get("/:id", employeeController.getEmployeeById);
+
+// PUT /api/employees/:id - Cập nhật thông tin nhân viên
+router.put("/:id", employeeController.updateEmployee);
+
+// DELETE /api/employees/:id - Xóa/Khóa nhân viên
+router.delete("/:id", employeeController.deleteEmployee);
 
 module.exports = router;

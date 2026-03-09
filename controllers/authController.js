@@ -1,3 +1,4 @@
+// Điểm NHẬN - GỌI SERVICE XỬ LÝ  - TRẢ dữ liệu và kết quả
 const authService = require("../services/authService");
 
 const register = async (req, res) => {
@@ -16,7 +17,6 @@ const register = async (req, res) => {
   }
 };
 
-// src/controllers/authController.js
 const verifyOtp = async (req, res) => {
   try {
     const { email, otpCode } = req.body;
@@ -35,4 +35,76 @@ const verifyOtp = async (req, res) => {
     });
   }
 };
-module.exports = { register, verifyOtp };
+
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ Email và Mật khẩu!",
+      });
+    }
+
+    const result = await authService.login(email, password);
+
+    // Trả về Token và thông tin User cho Frontend lưu vào LocalStorage
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const changePassword = async (req, res) => {
+  try {
+    const { email, oldPassword, newPassword } = req.body;
+
+    if (!email || !oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ email, mật khẩu cũ và mật khẩu mới!",
+      });
+    }
+
+    const result = await authService.changePassword(
+      email,
+      oldPassword,
+      newPassword,
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const updateProfile = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email không được để trống!",
+      });
+    }
+
+    const result = await authService.updateProfile(email, req.body);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+module.exports = { register, verifyOtp, login, changePassword, updateProfile };
