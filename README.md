@@ -22,6 +22,7 @@ Dưới đây là mô tả chi tiết về chức năng của từng thư mục 
 *   **`database/`**: Lưu trữ các kịch bản SQL (`.sql`) để khởi tạo hoặc cập nhật cấu trúc database (Schema).
 *   **`docs/`**: Chứa tài liệu API.
     *   `swagger.yaml`: Định nghĩa tài liệu API theo chuẩn Swagger/OpenAPI.
+*   **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)**: Tài liệu tóm tắt các endpoint API nhanh (Markdown).
 *   **`middleware/`**: Chứa các hàm trung gian xử lý trước khi vào controller (ví dụ: xác thực JWT, phân quyền, kiểm tra dữ liệu đầu vào).
 *   **`types/`**: Định nghĩa các kiểu dữ liệu (Interfaces/Types) cho TypeScript để đảm bảo code an toàn và có gợi ý tốt.
 *   **`utils/`**: Các công cụ tiện ích dùng chung cho toàn dự án.

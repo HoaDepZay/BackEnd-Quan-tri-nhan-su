@@ -1,29 +1,59 @@
 import sql from "mssql";
 import "dotenv/config";
 
-const config = {
+// 1. Cấu hình cơ sở (Base Config)
+const baseConfig: sql.config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
-  server: process.env.DB_SERVER, 
+  server: process.env.DB_SERVER || "",
   port: parseInt(process.env.DB_PORT || "1433"),
-  database: process.env.DB_NAME,
   options: {
-    // instanceName: process.env.DB_INSTANCE, // <--- TẠM THỜI COMMENT DÒNG NÀY LẠI
-    encrypt: false, 
+    encrypt: true, // Bắt buộc cho Azure SQL
     trustServerCertificate: true,
     connectTimeout: 30000,
   },
-  // ... phần còn lại giữ nguyên
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000,
+  },
 };
 
-// Hàm kết nối DB
+// 2. Cấu hình cho Database Nghiệp vụ (QuanTriNhanSu)
+const appConfig = {
+  ...baseConfig,
+  database: process.env.DB_NAME,
+};
+
+// 3. Cấu hình cho Database Hệ thống (master)
+const masterConfig = {
+  ...baseConfig,
+  database: process.env.DB_MASTER,
+};
+
+// Tạo các Pool kết nối
+const appPool = new sql.ConnectionPool(appConfig);
+const masterPool = new sql.ConnectionPool(masterConfig);
+
+/**
+ * Hàm khởi tạo toàn bộ kết nối
+ */
 const connectDB = async () => {
   try {
-    await sql.connect(config);
-    console.log("✅ Đã kết nối SQL Server thành công (Global Pool)");
-  } catch (err) {
+    // Kết nối vào DB chính
+    await appPool.connect();
+    console.log(`✅ Kết nối thành công Database: ${process.env.DB_NAME}`);
+
+    // Kết nối vào DB master (Dùng để quản lý Login)
+    await masterPool.connect();
+    console.log(
+      `✅ Kết nối thành công Database: master (Sẵn sàng quản trị Login)`,
+    );
+  } catch (err: any) {
     console.error("❌ Lỗi kết nối SQL Server:", err.message);
-    process.exit(1); // Dừng server nếu không kết nối được DB
+    process.exit(1);
   }
 };
-export { connectDB, sql };
+
+// Export các Pool và thư viện sql để sử dụng ở các Service
+export { connectDB, appPool, masterPool, sql };
