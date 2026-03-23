@@ -1,4 +1,5 @@
 import payrollRepository from "../repositories/payrollRepository";
+import { appPool, sql } from "../config/db";
 
 const payrollService = {
   getPayrollByMonth: async (month, year) => {
@@ -12,8 +13,13 @@ const payrollService = {
 
   getEmployeePayslip: async (maNv, month, year) => {
     try {
-      const data = await payrollRepository.getEmployeePayslip(maNv, month, year);
-      if (!data) throw new Error("Tháng này chưa có phiếu lương hoặc NV không tồn tại.");
+      const data = await payrollRepository.getEmployeePayslip(
+        maNv,
+        month,
+        year,
+      );
+      if (!data)
+        throw new Error("Tháng này chưa có phiếu lương hoặc NV không tồn tại.");
       return { success: true, data };
     } catch (error) {
       throw new Error("Lỗi lấy phiếu lương cá nhân: " + error.message);
@@ -33,8 +39,7 @@ const payrollService = {
       const rawData = await payrollRepository.getRawDataForPayroll(month, year);
 
       let results = [];
-      const sql = require("mssql");
-      const transaction = new sql.Transaction();
+      const transaction = appPool.transaction();
       await transaction.begin();
 
       try {
@@ -60,7 +65,7 @@ const payrollService = {
             phucap: PhuCap,
             thuong: Thuong,
             khautru: KhauTruBHXH,
-            thuclanh: ThucLanh
+            thuclanh: ThucLanh,
           };
 
           const request = new sql.Request(transaction);
@@ -68,7 +73,11 @@ const payrollService = {
           results.push(recordData);
         }
         await transaction.commit();
-        return { success: true, message: "Sinh bảng lương tự động thành công", counts: results.length };
+        return {
+          success: true,
+          message: "Sinh bảng lương tự động thành công",
+          counts: results.length,
+        };
       } catch (err) {
         await transaction.rollback();
         throw err;
@@ -83,9 +92,9 @@ const payrollService = {
       await payrollRepository.updatePayrollRecord(maBl, data);
       return { success: true, message: "Cập nhật dòng lương thành công" };
     } catch (error) {
-       throw new Error("Lỗi cập nhật dòng lương: " + error.message);
+      throw new Error("Lỗi cập nhật dòng lương: " + error.message);
     }
-  }
+  },
 };
 
 export default payrollService;

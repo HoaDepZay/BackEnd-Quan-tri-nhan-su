@@ -5,6 +5,21 @@ import "dotenv/config";
 
 const SECRET_KEY = process.env.SECRET_KEY;
 
+const buildAzureSqlAuthUser = (loginName: string) => {
+  const server = process.env.DB_SERVER || "";
+  const azureServerShortName = server.split(".")[0];
+
+  if (
+    loginName.includes("@") &&
+    azureServerShortName &&
+    !loginName.toLowerCase().endsWith(`@${azureServerShortName.toLowerCase()}`)
+  ) {
+    return `${loginName}@${azureServerShortName}`;
+  }
+
+  return loginName;
+};
+
 const withUserConnection = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "Chưa đăng nhập!" });
@@ -39,11 +54,12 @@ const withUserConnection = (req, res, next) => {
       SECRET_KEY,
     );
     const originalPassword = decryptedBytes.toString(CryptoJS.enc.Utf8);
+    const sqlAuthUser = buildAzureSqlAuthUser(decoded.userEmail);
 
     // Tạo chuỗi kết nối động
     // decoded.userEmail chứa email của user (SQL username)
-    console.log("🔐 Creating connection string for user:", decoded.userEmail);
-    const userConnStr = `Driver={ODBC Driver 17 for SQL Server};Server=${process.env.DB_SERVER};Database=${process.env.DB_NAME};UID=${decoded.userEmail};PWD=${originalPassword};TrustServerCertificate=yes;Connection Timeout=10;`;
+    console.log("🔐 Creating connection string for user:", sqlAuthUser);
+    const userConnStr = `Driver={ODBC Driver 17 for SQL Server};Server=${process.env.DB_SERVER};Database=${process.env.DB_NAME};UID=${sqlAuthUser};PWD=${originalPassword};Encrypt=yes;TrustServerCertificate=yes;Connection Timeout=10;`;
     req.userConnectionString = userConnStr;
     req.user = decoded; // Lưu thêm info user để dùng nếu cần
     next();

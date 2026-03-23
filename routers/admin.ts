@@ -3,8 +3,18 @@ const router = express.Router();
 import sql from "msnodesqlv8";
 const connectionString = `Driver={ODBC Driver 17 for SQL Server};Server=${process.env.DB_SERVER};Database=${process.env.DB_NAME};UID=${process.env.DB_USER};PWD=${process.env.DB_PASS};TrustServerCertificate=yes;`;
 import withUserConnection from "../middleware/authMiddleware";
+import authController from "../controllers/authController";
 
 // --- QUẢN LÝ NHÂN VIÊN ---
+
+// Danh sách hồ sơ đã xác thực OTP, chờ admin duyệt
+router.get("/onboarding/pending", authController.getPendingApprovals);
+
+// Admin duyệt hồ sơ đăng ký và cấp thông tin nhân viên
+router.post("/onboarding/accept", authController.acceptPendingRegistration);
+
+// Admin từ chối hồ sơ đăng ký
+router.post("/onboarding/reject", authController.rejectPendingRegistration);
 
 // 1. Sửa nhân viên
 router.put("/nhan-vien/edit", (req, res) => {
@@ -79,13 +89,11 @@ router.post("/phong-ban/create", (req, res) => {
         return res.status(500).json({ error: "Trùng ID, thử lại!" });
       return res.status(500).json({ error: err.message });
     }
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: `Tạo phòng ${tenpb} thành công!`,
-        id: maPhongBan,
-      });
+    res.status(201).json({
+      success: true,
+      message: `Tạo phòng ${tenpb} thành công!`,
+      id: maPhongBan,
+    });
   });
 });
 

@@ -107,4 +107,54 @@ const updateProfile = async (req, res) => {
   }
 };
 
-export default { register, verifyOtp, login, changePassword, updateProfile };
+const getPendingApprovals = async (req, res) => {
+  try {
+    const result = await authService.getPendingApprovals();
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const acceptPendingRegistration = async (req, res) => {
+  try {
+    const result = await authService.acceptPendingRegistration(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const rejectPendingRegistration = async (req, res) => {
+  try {
+    const { email, reason, rejectedBy } = req.body;
+    const result = await authService.rejectPendingRegistration(
+      email,
+      reason,
+      rejectedBy,
+    );
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export default {
+  register,
+  verifyOtp,
+  login,
+  changePassword,
+  updateProfile,
+  getPendingApprovals,
+  acceptPendingRegistration,
+  rejectPendingRegistration,
+};

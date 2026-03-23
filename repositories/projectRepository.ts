@@ -1,12 +1,12 @@
-import sql from "mssql";
+import { appPool, sql } from "../config/db";
 
 const projectRepository = {
   // 1. Lấy danh sách dự án
   getAllProjects: async () => {
-    const request = new sql.Request();
+    const request = appPool.request();
     const result = await request.query(`
       SELECT MADA, TENDA, MoTa, NgayBatDau, NgayKetThuc, TrangThai 
-      FROM DUAN
+      FROM DU_AN
       ORDER BY MADA DESC
     `);
     return result.recordset;
@@ -14,12 +14,10 @@ const projectRepository = {
 
   // 2. Lấy chi tiết dự án
   getProjectById: async (maDa) => {
-    const request = new sql.Request();
-    const result = await request
-      .input("MaDA", sql.Int, maDa)
-      .query(`
+    const request = appPool.request();
+    const result = await request.input("MaDA", sql.Int, maDa).query(`
         SELECT MADA, TENDA, MoTa, NgayBatDau, NgayKetThuc, TrangThai 
-        FROM DUAN
+        FROM DU_AN
         WHERE MADA = @MaDA
       `);
     return result.recordset[0] || null;
@@ -27,12 +25,10 @@ const projectRepository = {
 
   // 3. Lấy ds thành viên trong dự án
   getProjectMembers: async (maDa) => {
-    const request = new sql.Request();
-    const result = await request
-      .input("MaDA", sql.Int, maDa)
-      .query(`
+    const request = appPool.request();
+    const result = await request.input("MaDA", sql.Int, maDa).query(`
         SELECT pc.MaNV, nv.HOTEN, nv.EMAIL, nv.CHUCVU, pc.VaiTroDuAn, pc.NgayThamGia
-        FROM PHANCONG_DUAN pc
+        FROM PHAN_CONG_DU_AN pc
         JOIN NHAN_VIEN nv ON pc.MaNV = nv.MANV
         WHERE pc.MaDA = @MaDA
       `);
@@ -41,13 +37,11 @@ const projectRepository = {
 
   // 4. Lấy ds dự án của 1 nhân viên
   getEmployeeProjects: async (maNv) => {
-    const request = new sql.Request();
-    const result = await request
-      .input("MaNV", sql.VarChar, maNv)
-      .query(`
+    const request = appPool.request();
+    const result = await request.input("MaNV", sql.VarChar, maNv).query(`
         SELECT da.MADA, da.TENDA, da.TrangThai, pc.VaiTroDuAn, pc.NgayThamGia
-        FROM PHANCONG_DUAN pc
-        JOIN DUAN da ON pc.MaDA = da.MADA
+          FROM PHAN_CONG_DU_AN pc
+          JOIN DU_AN da ON pc.MaDA = da.MADA
         WHERE pc.MaNV = @MaNV
       `);
     return result.recordset;
@@ -55,7 +49,7 @@ const projectRepository = {
 
   // 5. Tạo dự án mới
   createProject: async (data) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     await request
       .input("TenDA", sql.NVarChar, data.tenda)
       .input("MoTa", sql.NVarChar, data.mota || null)
@@ -63,14 +57,14 @@ const projectRepository = {
       .input("NgayKetThuc", sql.Date, data.ngayketthuc || null)
       .input("TrangThai", sql.NVarChar, data.trangthai || "Đang lên kế hoạch")
       .query(`
-        INSERT INTO DUAN (TENDA, MoTa, NgayBatDau, NgayKetThuc, TrangThai)
+        INSERT INTO DU_AN (TENDA, MoTa, NgayBatDau, NgayKetThuc, TrangThai)
         VALUES (@TenDA, @MoTa, @NgayBatDau, @NgayKetThuc, @TrangThai)
       `);
   },
 
   // 6. Sửa dự án
   updateProject: async (maDa, data) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     let updateFields = [];
 
     if (data.tenda !== undefined) {
@@ -97,39 +91,38 @@ const projectRepository = {
     if (updateFields.length === 0) return;
 
     request.input("MaDA", sql.Int, maDa);
-    const query = `UPDATE DUAN SET ${updateFields.join(", ")} WHERE MADA = @MaDA`;
+    const query = `UPDATE DU_AN SET ${updateFields.join(", ")} WHERE MADA = @MaDA`;
     await request.query(query);
   },
 
   // 7. Xóa dự án
   deleteProject: async (maDa) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     await request
       .input("MaDA", sql.Int, maDa)
-      .query(`DELETE FROM DUAN WHERE MADA = @MaDA`);
+      .query(`DELETE FROM DU_AN WHERE MADA = @MaDA`);
   },
 
   // 8. Thêm thành viên vào dự án
   addProjectMember: async (maDa, maNv, vaiTroDuAn) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     await request
       .input("MaDA", sql.Int, maDa)
       .input("MaNV", sql.VarChar, maNv)
-      .input("VaiTroDuAn", sql.NVarChar, vaiTroDuAn)
-      .query(`
-        INSERT INTO PHANCONG_DUAN (MaDA, MaNV, VaiTroDuAn, NgayThamGia)
+      .input("VaiTroDuAn", sql.NVarChar, vaiTroDuAn).query(`
+        INSERT INTO PHAN_CONG_DU_AN (MaDA, MaNV, VaiTroDuAn, NgayThamGia)
         VALUES (@MaDA, @MaNV, @VaiTroDuAn, GETDATE())
       `);
   },
 
   // 9. Xóa thành viên khỏi dự án
   removeProjectMember: async (maDa, maNv) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     await request
       .input("MaDA", sql.Int, maDa)
       .input("MaNV", sql.VarChar, maNv)
-      .query(`DELETE FROM PHANCONG_DUAN WHERE MaDA = @MaDA AND MaNV = @MaNV`);
-  }
+      .query(`DELETE FROM PHAN_CONG_DU_AN WHERE MaDA = @MaDA AND MaNV = @MaNV`);
+  },
 };
 
 export default projectRepository;

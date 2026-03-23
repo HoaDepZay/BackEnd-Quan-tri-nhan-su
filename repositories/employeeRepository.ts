@@ -1,9 +1,9 @@
-import sql from "mssql";
+import { appPool, sql } from "../config/db";
 
 const employeeRepository = {
   // 1. Lấy danh sách nhâ n viên (có phân trang + tìm kiếm)
   getAllEmployees: async (pageNum = 1, pageSize = 10, searchKeyword = "") => {
-    const request = new sql.Request();
+    const request = appPool.request();
     const offset = (pageNum - 1) * pageSize;
 
     let query = `
@@ -36,7 +36,7 @@ const employeeRepository = {
     const result = await request.query(query);
 
     // Lấy tổng số nhân viên để tính total pages
-    const countRequest = new sql.Request();
+    const countRequest = appPool.request();
     if (searchKeyword && searchKeyword.trim() !== "") {
       countRequest.input("searchKeyword", sql.NVarChar, `%${searchKeyword}%`);
     }
@@ -60,7 +60,7 @@ const employeeRepository = {
 
   // 2. Lấy chi tiết 1 nhân viên
   getEmployeeById: async (manv) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     const result = await request.input("MaNV", sql.NVarChar, manv).query(`
         SELECT 
           nv.MANV, 
@@ -72,10 +72,14 @@ const employeeRepository = {
           pb.TENPB,
           nv.NgaySinh AS NGAYSINH,
           nv.GioiTinh AS GIOITINH,
+          nv.SDT,
           nv.DiaChi AS DIACHINHAN,
+          nv.DiaChi AS DIACHI,
+          nv.MaChucDanh AS MACHUCDANH,
           nv.NgayTuyenDung AS NGAYVAOLAM,
-          hs.SO_CCCD,
-          hs.NGAYCAP,
+          nv.NgayTuyenDung AS NGAYTUYENDUNG,
+          nv.TrangThaiLamViec AS TRANGTHAILAMVIEC,
+          hs.SO_CCCD
         FROM NHAN_VIEN nv
         LEFT JOIN PHONG_BAN pb ON nv.MAPHG = pb.MAPHG
         LEFT JOIN HO_SO_BM hs ON nv.MANV = hs.MANV
@@ -86,7 +90,7 @@ const employeeRepository = {
 
   // 3. Thêm nhân viên mới (Admin dùng)
   createEmployee: async (data) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     return await request
       .input("MaNV", sql.NVarChar, data.manv)
       .input("HoTen", sql.NVarChar, data.hoten)
@@ -107,7 +111,7 @@ const employeeRepository = {
 
   // 4. Cập nhật thông tin nhân viên
   updateEmployee: async (manv, data) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     let updateFields = [];
     let params = { MaNV: manv };
 
@@ -156,7 +160,7 @@ const employeeRepository = {
 
   // 5. Xóa/Khóa nhân viên (cập nhật status)
   deleteEmployee: async (manv) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     // Có thể xóa login hoặc chỉ cập nhật status (tùy DB design)
     // Variant 1: Xóa login (khóa user login)
     return await request
@@ -166,7 +170,7 @@ const employeeRepository = {
 
   // 6. Đổi mật khẩu nhân viên
   changePassword: async (email, newPassword) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     return await request
       .input("Email", sql.NVarChar, email)
       .input("NewPassword", sql.NVarChar, newPassword)
@@ -177,7 +181,7 @@ const employeeRepository = {
 
   // 7. Cập nhật profile nhân viên
   updateProfile: async (email, data) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     let updateFields = [];
 
     if (data.hoten !== undefined) {

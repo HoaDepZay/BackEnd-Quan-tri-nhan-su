@@ -1,13 +1,12 @@
-import sql from "mssql";
+import { appPool, sql } from "../config/db";
 
 const payrollRepository = {
   // Lấy danh sách lương tháng
   getPayrollByMonth: async (month, year) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     const result = await request
       .input("Thang", sql.Int, month)
-      .input("Nam", sql.Int, year)
-      .query(`
+      .input("Nam", sql.Int, year).query(`
         SELECT bl.MaBL, bl.MaNV, nv.HOTEN, bl.Thang, bl.Nam,
                bl.SoNgayCongThucTe, bl.LuongCoBan, bl.PhuCap, 
                bl.Thuong, bl.KhauTruBHXH, bl.ThucLanh
@@ -17,15 +16,13 @@ const payrollRepository = {
       `);
     return result.recordset;
   },
-
   // Lấy chi tiết lương của NV
   getEmployeePayslip: async (maNv, month, year) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     const result = await request
       .input("MaNV", sql.VarChar, maNv)
       .input("Thang", sql.Int, month)
-      .input("Nam", sql.Int, year)
-      .query(`
+      .input("Nam", sql.Int, year).query(`
         SELECT bl.MaBL, bl.Thang, bl.Nam, bl.SoNgayCongThucTe, bl.LuongCoBan,
                bl.PhuCap, bl.Thuong, bl.KhauTruBHXH, bl.ThucLanh
         FROM BANG_LUONG bl
@@ -33,10 +30,9 @@ const payrollRepository = {
       `);
     return result.recordset[0] || null;
   },
-
   // Xóa bảng lương tháng cũ nếu chạy lại generator
   deletePayrollByMonth: async (month, year) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     await request
       .input("Thang", sql.Int, month)
       .input("Nam", sql.Int, year)
@@ -45,7 +41,7 @@ const payrollRepository = {
 
   // Chèn một dòng lương mới
   createPayrollRecord: async (data, transactionRequest) => {
-    const request = transactionRequest || new sql.Request();
+    const request = transactionRequest || appPool.request();
     await request
       .input("MaNV", sql.VarChar, data.manv)
       .input("Thang", sql.Int, data.thang)
@@ -55,8 +51,7 @@ const payrollRepository = {
       .input("PhuCap", sql.Decimal(18, 2), data.phucap)
       .input("Thuong", sql.Decimal(18, 2), data.thuong || 0)
       .input("KhauTruBHXH", sql.Decimal(18, 2), data.khautru || 0)
-      .input("ThucLanh", sql.Decimal(18, 2), data.thuclanh)
-      .query(`
+      .input("ThucLanh", sql.Decimal(18, 2), data.thuclanh).query(`
         INSERT INTO BANG_LUONG 
         (MaNV, Thang, Nam, SoNgayCongThucTe, LuongCoBan, PhuCap, Thuong, KhauTruBHXH, ThucLanh)
         VALUES 
@@ -65,7 +60,7 @@ const payrollRepository = {
   },
 
   updatePayrollRecord: async (maBl, data) => {
-    const request = new sql.Request();
+    const request = appPool.request();
     let updateFields = [];
 
     if (data.thuong !== undefined) {
@@ -92,11 +87,10 @@ const payrollRepository = {
   getRawDataForPayroll: async (month, year) => {
     // Truy xuất Lương cơ bản và Số ngày công
     // Thực tế sẽ phải join HOPDONG và BAN_CHAM_CONG. Vì table HOPDONG mới tạo, giả dụ dùng LUONG trong NHAN_VIEN.
-    const request = new sql.Request();
+    const request = appPool.request();
     const result = await request
       .input("Thang", sql.Int, month)
-      .input("Nam", sql.Int, year)
-      .query(`
+      .input("Nam", sql.Int, year).query(`
         SELECT 
            nv.MANV, 
            nv.LUONG AS LuongCoBan, 
@@ -107,7 +101,7 @@ const payrollRepository = {
         LEFT JOIN CHUCDANH cd ON nv.MaChucDanh = cd.MaChucDanh
       `);
     return result.recordset;
-  }
+  },
 };
 
 export default payrollRepository;

@@ -1,61 +1,330 @@
-import sql from "mssql";
+import { appPool, sql } from "../config/db";
+
+const REGISTRATION_STATUS = {
+  PENDING_OTP: "PENDING_OTP",
+  OTP_VERIFIED: "OTP_VERIFIED",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  EXPIRED: "EXPIRED",
+};
 
 const userRepository = {
-  // 1. Lưu thông tin vào bảng đệm DANG_KY_CHO
+  // 1. Tạo hoặc xóa contained database user ở DB nghiệp vụ
+  handleDatabaseUser: async (email, password, action) => {
+    const normalizedAction = String(action || "").toUpperCase();
+    const safeIdentifier = `[${String(email).replace(/]/g, "]]")}]`;
+    const safeEmailLiteral = String(email).replace(/'/g, "''");
+    const safePassword = String(password).replace(/'/g, "''");
+
+    if (normalizedAction === "CREATE") {
+      await appPool.request().query(
+        `IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
+         BEGIN
+           CREATE USER ${safeIdentifier} WITH PASSWORD = '${safePassword}';
+         END`,
+      );
+      return;
+    }
+
+    if (normalizedAction === "DROP") {
+      await appPool.request().query(
+        `IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
+         BEGIN
+           DROP USER ${safeIdentifier};
+         END`,
+      );
+      return;
+    }
+
+    throw new Error("Action không hợp lệ. Chỉ hỗ trợ CREATE hoặc DROP");
+  },
+
+  // 2. Lưu thông tin đăng ký tạm + OTP vào DANG_KY_CHO
   savePendingRegistration: async (data) => {
-    const request = new sql.Request();
-   // userRepository.ts
-return await request
-    .input("MaNV", sql.NVarChar, data.manv)
-    .input("Email", sql.NVarChar, data.email)
-    .input("PassEnc", sql.NVarChar, data.encryptedPass)
-    .input("HoTen", sql.NVarChar, data.hoten)
-    .input("MaPhg", sql.Int, data.maphg)
-  // Lưu ý: data.luong nếu để trống nên mặc định là 0 để tránh lỗi NULL
-  
-    .input("Luong", sql.Decimal(18, 2), data.luong ?? 0) 
-    .input("ChucVu", sql.NVarChar, data.chucvu || 'Nhân viên') 
-    .input("OtpCode", sql.NVarChar, data.otpCode)
-    .input("ExpiredAt", sql.DateTime, data.expiredAt)
-    .execute("sp_LuuDangKyTam");
+    await appPool
+      .request()
+      .input("MaNV", sql.NVarChar(10), data.manv)
+      .input("Email", sql.NVarChar(100), data.email)
+      .input("PassEnc", sql.NVarChar(sql.MAX), data.encryptedPass)
+      .input("HoTen", sql.NVarChar(200), data.hoten)
+      .input("MaPhg", sql.Int, data.maphg)
+      .input("Luong", sql.Decimal(18, 2), data.luong ?? 0)
+      .input("ChucVu", sql.NVarChar(100), data.chucvu || "Nhân viên")
+      .input("OtpCode", sql.NVarChar(6), data.otpCode)
+      .input("ExpiredAt", sql.DateTime, data.expiredAt).query(`
+        MERGE [dbo].[DANG_KY_CHO] AS target
+        USING (SELECT @Email AS Email) AS source
+        ON (target.Email = source.Email)
+        WHEN MATCHED THEN
+            UPDATE SET
+              MaNV = @MaNV,
+              PasswordMaHoa = @PassEnc,
+              HoTen = @HoTen,
+              MaPhg = @MaPhg,
+              Luong = @Luong,
+              ChucVu = @ChucVu,
+              OtpCode = @OtpCode,
+              ExpiredAt = @ExpiredAt,
+              CreatedAt = GETDATE(),
+              RegistrationStatus = '${REGISTRATION_STATUS.PENDING_OTP}',
+              OtpVerifiedAt = NULL,
+              ApprovedAt = NULL,
+              ApprovedBy = NULL,
+              RejectReason = NULL,
+              RejectedAt = NULL
+        WHEN NOT MATCHED THEN
+            INSERT (MaNV, Email, PasswordMaHoa, HoTen, MaPhg, Luong, ChucVu, OtpCode, ExpiredAt, RegistrationStatus, OtpVerifiedAt, ApprovedAt, ApprovedBy, RejectReason, RejectedAt)
+            VALUES (@MaNV, @Email, @PassEnc, @HoTen, @MaPhg, @Luong, @ChucVu, @OtpCode, @ExpiredAt, '${REGISTRATION_STATUS.PENDING_OTP}', NULL, NULL, NULL, NULL, NULL);
+      `);
+
+    return {
+      Success: 1,
+      Message: "Đã lưu thông tin tạm thời và gửi OTP",
+    };
   },
 
-  // 2. Lấy thông tin từ bảng đệm để verify
-  getPendingAccount: async (email) => {
-    const request = new sql.Request();
-    const result = await request
-      .input("Email", sql.NVarChar, email)
-      .query("SELECT * FROM DANG_KY_CHO WHERE Email = @Email");
-    return result.recordset[0];
+  markOtpVerified: async (email, otpCode) => {
+    const result = await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email)
+      .input("OtpCode", sql.NVarChar(6), otpCode).query(`
+        UPDATE [dbo].[DANG_KY_CHO]
+        SET RegistrationStatus = '${REGISTRATION_STATUS.OTP_VERIFIED}',
+            OtpVerifiedAt = GETDATE(),
+            OtpCode = NULL,
+            ExpiredAt = NULL
+        WHERE Email = @Email
+          AND OtpCode = @OtpCode
+          AND ExpiredAt > GETDATE()
+          AND RegistrationStatus = '${REGISTRATION_STATUS.PENDING_OTP}';
+
+        SELECT @@ROWCOUNT AS AffectedRows;
+      `);
+
+    return (result.recordset?.[0]?.AffectedRows || 0) > 0;
   },
 
-  // 3. Chạy Procedure kích hoạt tài khoản thật trên SQL Server
-// userRepository.ts
-activateAccount: async (data: any) => {
-  const request = new sql.Request();
-  return await request
-    .input("MaNV", sql.NVarChar, data.MaNV)
-    .input("Email", sql.NVarChar, data.Email)
-    .input("Password", sql.NVarChar, data.originalPassword) 
-    .input("HoTen", sql.NVarChar, data.HoTen)
-    .input("MaPhg", sql.Int, data.MaPhg)
-    .input("Luong", sql.Decimal(18, 2), data.Luong ?? 0)
-    .input("ChucVu", sql.NVarChar, data.ChucVu ?? 'Nhân viên')
-    .execute("sp_KichHoatTaiKhoanChinhThuc");
-},
+  // 3. Đổi mật khẩu contained database user
+  updateDatabaseUserPassword: async (email, newPassword) => {
+    const safeIdentifier = `[${String(email).replace(/]/g, "]]")}]`;
+    const safeEmailLiteral = String(email).replace(/'/g, "''");
+    const safePassword = String(newPassword).replace(/'/g, "''");
 
-  // 4. Xóa bảng đệm
-  deletePendingAccount: async (email) => {
-    const request = new sql.Request();
-    return await request
-      .input("Email", sql.NVarChar, email)
-      .query("DELETE FROM DANG_KY_CHO WHERE Email = @Email");
+    await appPool.request().query(`
+      IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
+      BEGIN
+        ALTER USER ${safeIdentifier} WITH PASSWORD = '${safePassword}';
+      END
+    `);
   },
 
-  // 5. Lấy thông tin nhân viên (không lấy mật khẩu)
+  // 5. Kiểm tra OTP còn hiệu lực trong bảng DANG_KY_CHO
+  verifyPendingOtp: async (email, otpCode) => {
+    const result = await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email)
+      .input("OtpCode", sql.NVarChar(6), otpCode)
+      .query(
+        `SELECT TOP 1 MaNV, Email, PasswordMaHoa, HoTen, MaPhg, Luong, ChucVu, OtpCode, ExpiredAt
+         FROM DANG_KY_CHO
+         WHERE Email = @Email
+           AND OtpCode = @OtpCode
+           AND ExpiredAt > GETDATE()
+           AND RegistrationStatus = '${REGISTRATION_STATUS.PENDING_OTP}'`,
+      );
+
+    return result.recordset[0] || null;
+  },
+
+  getPendingRegistrationStatusByEmail: async (email) => {
+    await appPool.request().input("Email", sql.NVarChar(100), email).query(`
+        UPDATE DANG_KY_CHO
+        SET RegistrationStatus = '${REGISTRATION_STATUS.EXPIRED}'
+        WHERE Email = @Email
+          AND RegistrationStatus = '${REGISTRATION_STATUS.PENDING_OTP}'
+          AND ExpiredAt IS NOT NULL
+          AND ExpiredAt <= GETDATE();
+      `);
+
+    const result = await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email).query(`
+        SELECT TOP 1 Email, RegistrationStatus, ExpiredAt, RejectReason
+        FROM DANG_KY_CHO
+        WHERE Email = @Email
+      `);
+
+    return result.recordset[0] || null;
+  },
+
+  getPendingApprovalList: async () => {
+    const result = await appPool.request().query(`
+      SELECT Email, MaNV, HoTen, MaPhg, Luong, ChucVu, CreatedAt, OtpVerifiedAt, RegistrationStatus
+      FROM DANG_KY_CHO
+      WHERE RegistrationStatus = '${REGISTRATION_STATUS.OTP_VERIFIED}'
+      ORDER BY OtpVerifiedAt DESC, CreatedAt DESC
+    `);
+
+    return result.recordset;
+  },
+
+  getPendingApprovalByEmail: async (email) => {
+    const result = await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email).query(`
+        SELECT TOP 1 Email, MaNV, PasswordMaHoa, HoTen, MaPhg, Luong, ChucVu, RegistrationStatus
+        FROM DANG_KY_CHO
+        WHERE Email = @Email
+      `);
+
+    return result.recordset[0] || null;
+  },
+
+  approvePendingRegistration: async (payload) => {
+    const transaction = appPool.transaction();
+    await transaction.begin();
+
+    try {
+      const safeEmailIdentifier = `[${String(payload.email).replace(/]/g, "]]")}]`;
+      const safeEmailLiteral = String(payload.email).replace(/'/g, "''");
+      const safePassword = String(payload.password).replace(/'/g, "''");
+
+      const stage = await new sql.Request(transaction).input(
+        "Email",
+        sql.NVarChar(100),
+        payload.email,
+      ).query(`
+          SELECT TOP 1 Email, MaNV, HoTen, MaPhg, Luong, ChucVu, RegistrationStatus
+          FROM DANG_KY_CHO WITH (UPDLOCK, ROWLOCK)
+          WHERE Email = @Email
+        `);
+
+      const staged = stage.recordset[0];
+      if (!staged) {
+        await transaction.rollback();
+        return { Success: 0, Message: "Không tìm thấy hồ sơ chờ duyệt" };
+      }
+
+      if (staged.RegistrationStatus !== REGISTRATION_STATUS.OTP_VERIFIED) {
+        await transaction.rollback();
+        return {
+          Success: 0,
+          Message: `Không thể duyệt hồ sơ ở trạng thái ${staged.RegistrationStatus}`,
+        };
+      }
+
+      const effectiveMaNV = payload.manv || staged.MaNV;
+      const effectiveHoTen = payload.hoten || staged.HoTen;
+      const effectiveMaPhg =
+        payload.maphg === undefined ? staged.MaPhg : payload.maphg;
+      const effectiveLuong =
+        payload.luong === undefined ? staged.Luong : payload.luong;
+      const effectiveChucVu = payload.chucvu || staged.ChucVu || "Nhân viên";
+
+      if (!effectiveMaNV || !effectiveHoTen) {
+        await transaction.rollback();
+        return {
+          Success: 0,
+          Message: "Thiếu MANV hoặc Họ tên để duyệt nhân viên",
+        };
+      }
+
+      await new sql.Request(transaction).query(`
+        IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
+        BEGIN
+          CREATE USER ${safeEmailIdentifier} WITH PASSWORD = '${safePassword}';
+        END
+      `);
+
+      await new sql.Request(transaction).query(`
+        IF NOT EXISTS (
+          SELECT 1
+          FROM sys.database_role_members drm
+          JOIN sys.database_principals rolep ON rolep.principal_id = drm.role_principal_id
+          JOIN sys.database_principals memberp ON memberp.principal_id = drm.member_principal_id
+          WHERE rolep.name = N'db_datareader' AND memberp.name = N'${safeEmailLiteral}'
+        )
+        BEGIN
+          ALTER ROLE [db_datareader] ADD MEMBER ${safeEmailIdentifier};
+        END
+
+        IF NOT EXISTS (
+          SELECT 1
+          FROM sys.database_role_members drm
+          JOIN sys.database_principals rolep ON rolep.principal_id = drm.role_principal_id
+          JOIN sys.database_principals memberp ON memberp.principal_id = drm.member_principal_id
+          WHERE rolep.name = N'db_datawriter' AND memberp.name = N'${safeEmailLiteral}'
+        )
+        BEGIN
+          ALTER ROLE [db_datawriter] ADD MEMBER ${safeEmailIdentifier};
+        END
+      `);
+
+      const existed = await new sql.Request(transaction)
+        .input("Email", sql.NVarChar(100), payload.email)
+        .query(
+          `SELECT TOP 1 1 AS ExistsFlag FROM [dbo].[NHAN_VIEN] WHERE EMAIL = @Email`,
+        );
+
+      if (existed.recordset.length === 0) {
+        await new sql.Request(transaction)
+          .input("MaNV", sql.NVarChar(10), effectiveMaNV)
+          .input("Email", sql.NVarChar(100), payload.email)
+          .input("HoTen", sql.NVarChar(200), effectiveHoTen)
+          .input("MaPhg", sql.Int, effectiveMaPhg)
+          .input("Luong", sql.Decimal(18, 2), effectiveLuong)
+          .input("ChucVu", sql.NVarChar(100), effectiveChucVu).query(`
+            INSERT INTO [dbo].[NHAN_VIEN] (MANV, EMAIL, HOTEN, MAPHG, LUONG, CHUCVU, IsVerified)
+            VALUES (@MaNV, @Email, @HoTen, @MaPhg, @Luong, @ChucVu, 1)
+          `);
+      }
+
+      await new sql.Request(transaction).input(
+        "Email",
+        sql.NVarChar(100),
+        payload.email,
+      ).query(`
+          DELETE FROM DANG_KY_CHO
+          WHERE Email = @Email
+        `);
+
+      await transaction.commit();
+      return {
+        Success: 1,
+        Message: "Duyệt nhân viên thành công",
+        Data: { manv: effectiveMaNV, email: payload.email },
+      };
+    } catch (error) {
+      await transaction.rollback().catch(() => undefined);
+      throw error;
+    }
+  },
+
+  rejectPendingRegistration: async (email, reason, rejectedBy) => {
+    const result = await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email)
+      .input("RejectReason", sql.NVarChar(sql.MAX), reason || null)
+      .input("RejectedBy", sql.NVarChar(100), rejectedBy || null).query(`
+        UPDATE DANG_KY_CHO
+        SET RegistrationStatus = '${REGISTRATION_STATUS.REJECTED}',
+            RejectReason = @RejectReason,
+            RejectedAt = GETDATE(),
+            ApprovedBy = @RejectedBy,
+            ApprovedAt = NULL
+        WHERE Email = @Email
+          AND RegistrationStatus IN ('${REGISTRATION_STATUS.PENDING_OTP}', '${REGISTRATION_STATUS.OTP_VERIFIED}');
+
+        SELECT @@ROWCOUNT AS AffectedRows;
+      `);
+
+    return (result.recordset?.[0]?.AffectedRows || 0) > 0;
+  },
+
+  // 6. Lấy thông tin nhân viên (không lấy mật khẩu)
   getUserByEmail: async (email) => {
-    const request = new sql.Request();
-    const result = await request
+    const result = await appPool
+      .request()
       .input("Email", sql.NVarChar, email)
       .query(
         "SELECT MANV, HOTEN, EMAIL, CHUCVU  FROM NHAN_VIEN WHERE EMAIL = @Email",

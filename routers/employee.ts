@@ -3,32 +3,13 @@ const router = express.Router();
 import sql from "msnodesqlv8";
 import withUserConnection from "../middleware/authMiddleware";
 import employeeController from "../controllers/employeeController";
-import { sql as globalSql } from "../config/db";
+import { appPool, sql as globalSql } from "../config/db";
 
 // ⚠️ ROUTES SPECIFIC PHẢI TRƯỚC GENERIC ROUTES (/:id)
 
 // 1️⃣ SPECIFIC ROUTES (profile, my-projects, coworkers, update-info)
-// GET /api/employees/profile/:manv - Xem profile cá nhân (dùng dynamic connection)
-router.get("/profile/:manv", withUserConnection, (req, res) => {
-  const query = `
-    SELECT nv.MANV, nv.HOTEN, nv.LUONG, nv.CHUCVU, nv.EMAIL, pb.TENPB, hs.SO_CCCD
-    FROM NHAN_VIEN nv
-    LEFT JOIN PHONG_BAN pb ON nv.MAPHG = pb.MAPHG
-    LEFT JOIN HO_SO_BM hs ON nv.MANV = hs.MANV
-    WHERE nv.MANV = ?`;
-
-  sql.query(req.userConnectionString, query, [req.params.manv], (err, rows) => {
-    if (err) {
-      console.error("Lỗi quyền hạn:", err.message);
-      return res
-        .status(403)
-        .json({ error: "Bạn không có quyền xem dữ liệu này (SQL Denied)" });
-    }
-    rows.length > 0
-      ? res.json(rows[0])
-      : res.status(404).json({ message: "404" });
-  });
-});
+// GET /api/employees/:id - Xem profile/chi tiết nhân viên (thay thế cho /profile/:manv cũ)
+// (Defined below in generic routes section)
 
 // GET /api/employees/my-projects/:manv - Xem dự án của tôi (dùng dynamic connection)
 router.get("/my-projects/:manv", withUserConnection, (req, res) => {
@@ -57,7 +38,7 @@ router.get("/coworkers/:maphg", withUserConnection, (req, res) => {
 router.put("/update-info", async (req, res) => {
   try {
     const { manv, email } = req.body;
-    const request = new globalSql.Request();
+    const request = appPool.request();
     await request
       .input("MaNV", globalSql.NVarChar, manv)
       .input("Email", globalSql.NVarChar, email)

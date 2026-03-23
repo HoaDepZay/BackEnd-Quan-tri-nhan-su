@@ -1,10 +1,19 @@
 // HÀM LOGIN XỬ LÝ API
 import crypto from "crypto";
 import sql from "mssql"; // Cần mssql để thử kết nối lúc Login
+import { appPool } from "../config/db";
 import userRepository from "../repositories/userRepository";
 import { sendOTPMail } from "../utils/mailHelper";
 import { generateToken } from "../utils/jwtHelper";
 import { decrypt, encrypt } from "../utils/encryptionHelper";
+
+const REGISTRATION_STATUS = {
+  PENDING_OTP: "PENDING_OTP",
+  OTP_VERIFIED: "OTP_VERIFIED",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  EXPIRED: "EXPIRED",
+};
 
 const generateEmployeeId = () => {
   const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -13,6 +22,51 @@ const generateEmployeeId = () => {
     randomChars += chars.charAt(crypto.randomInt(0, chars.length));
   }
   return `NV${randomChars}`;
+};
+
+const buildAzureSqlAuthUser = (loginName: string) => {
+  const server = process.env.DB_SERVER || "";
+  const azureServerShortName = server.split(".")[0];
+
+  // Azure SQL có thể hiểu sai phần sau @ trong email là tên server.
+  // Khi login chứa @, thêm @<server-short-name> để định tuyến đúng.
+  if (
+    loginName.includes("@") &&
+    azureServerShortName &&
+    !loginName.toLowerCase().endsWith(`@${azureServerShortName.toLowerCase()}`)
+  ) {
+    return `${loginName}@${azureServerShortName}`;
+  }
+
+  return loginName;
+};
+
+const normalizeGenderToTinyInt = (value: any) => {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    if (value === 0 || value === 1) return value;
+    throw new Error("Giới tính không hợp lệ. Chỉ chấp nhận 0 hoặc 1");
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (normalized === "1" || normalized === "nam" || normalized === "male") {
+    return 1;
+  }
+
+  if (
+    normalized === "0" ||
+    normalized === "nu" ||
+    normalized === "nữ" ||
+    normalized === "female"
+  ) {
+    return 0;
+  }
+
+  throw new Error("Giới tính không hợp lệ. Dùng Nam/Nữ hoặc 1/0");
 };
 const authService = {
   register: async (userData) => {
@@ -28,13 +82,18 @@ const authService = {
 
     const encryptedPass = encrypt(userData.password);
 
-    await userRepository.savePendingRegistration({
+    // Register chỉ lưu đăng ký tạm + OTP ở DB nghiệp vụ
+    const stageResult = await userRepository.savePendingRegistration({
       ...userData,
       manv,
       encryptedPass,
       otpCode,
       expiredAt,
     });
+
+    if (stageResult && stageResult.Success === 0) {
+      throw new Error(stageResult.Message || "Không thể lưu đăng ký tạm.");
+    }
 
     sendOTPMail(userData.email, otpCode).catch((err) =>
       console.error("Lỗi gửi mail:", err),
@@ -46,31 +105,21 @@ const authService = {
     };
   },
   verifyOTP: async (email, otpCode) => {
-    const pending = await userRepository.getPendingAccount(email);
+    // Bước 1: Kiểm tra OTP ở app pool
+    const pending = await userRepository.verifyPendingOtp(email, otpCode);
+    if (!pending) {
+      throw new Error("Mã OTP không đúng hoặc đã hết hạn");
+    }
 
-    if (!pending) throw new Error("Không tìm thấy yêu cầu đăng ký!");
-    if (pending.OtpCode !== otpCode) throw new Error("Mã OTP không chính xác!");
-    if (new Date() > new Date(pending.ExpiredAt))
-      throw new Error("Mã OTP đã hết hạn!");
-
-    const originalPassword = decrypt(pending.PasswordMaHoa);
-
-    // Kích hoạt trên SQL Server
-    await userRepository.activateAccount({
-      MaNV: pending.MaNV,
-      Email: pending.Email,
-      HoTen: pending.HoTen,
-      MaPhg: pending.MaPhg,
-      Luong: pending.Luong,
-      ChucVu: pending.ChucVu,
-      originalPassword: originalPassword,
-    });
-
-    await userRepository.deletePendingAccount(email);
+    // OTP hợp lệ: chỉ đánh dấu đã xác thực, chờ admin duyệt.
+    const marked = await userRepository.markOtpVerified(email, otpCode);
+    if (!marked) {
+      throw new Error("Không thể cập nhật trạng thái OTP. Vui lòng thử lại.");
+    }
 
     return {
       success: true,
-      message: "Tài khoản đã được kích hoạt thành công!",
+      message: "Xác thực OTP thành công. Vui lòng chờ admin phê duyệt.",
     };
   },
   login: async (email, password) => {
@@ -96,26 +145,15 @@ const authService = {
 
     console.log("After trim:", { email: trimmedEmail, password: "***" });
 
-    // 1. Kiểm tra thông tin nhân viên trong bảng chính
-    console.log("📋 Searching for user with email:", trimmedEmail);
-    const userResult = await userRepository.getUserByEmail(trimmedEmail);
-    const user = userResult.recordset[0];
-
-    if (!user) {
-      console.warn("⚠️ User not found with email:", trimmedEmail);
-      throw new Error("Email không tồn tại trong hệ thống!");
-    }
-
-    console.log("✅ User found:", user.EMAIL);
-
-    // 2. THỬ KẾT NỐI TRỰC TIẾP VÀO SQL SERVER ĐỂ XÁC THỰC MẬT KHẨU
+    // 1. THỬ KẾT NỐI TRỰC TIẾP VÀO SQL SERVER ĐỂ XÁC THỰC MẬT KHẨU
+    const sqlAuthUser = buildAzureSqlAuthUser(trimmedEmail);
     const loginConfig = {
-      user: trimmedEmail,
+      user: sqlAuthUser,
       password: trimmedPassword,
       server: process.env.DB_SERVER,
       database: process.env.DB_NAME,
       options: {
-        encrypt: false,
+        encrypt: true,
         trustServerCertificate: true,
         connectionTimeout: 30000,
         requestTimeout: 30000,
@@ -129,7 +167,7 @@ const authService = {
       server: loginConfig.server,
       database: loginConfig.database,
     });
-
+    // Login cho khách hàng
     try {
       const tempConn = new sql.ConnectionPool(loginConfig);
       await tempConn.connect();
@@ -137,22 +175,54 @@ const authService = {
       await tempConn.close();
     } catch (err) {
       console.error("❌ SQL Server login failed:", err.message);
+
+      const pending =
+        await userRepository.getPendingRegistrationStatusByEmail(trimmedEmail);
+      if (pending?.RegistrationStatus === REGISTRATION_STATUS.OTP_VERIFIED) {
+        throw new Error("Tài khoản của bạn chưa được admin chấp nhận.");
+      }
+      if (pending?.RegistrationStatus === REGISTRATION_STATUS.PENDING_OTP) {
+        throw new Error("Vui lòng xác thực OTP trước khi đăng nhập.");
+      }
+      if (pending?.RegistrationStatus === REGISTRATION_STATUS.REJECTED) {
+        throw new Error(
+          pending?.RejectReason
+            ? `Tài khoản đã bị từ chối: ${pending.RejectReason}`
+            : "Tài khoản đã bị từ chối.",
+        );
+      }
+      if (pending?.RegistrationStatus === REGISTRATION_STATUS.EXPIRED) {
+        throw new Error("Mã OTP đã hết hạn. Vui lòng đăng ký lại.");
+      }
+
       throw new Error("Mật khẩu không chính xác!");
     }
 
-    // 3. TẠO JWT TOKEN (Dữ liệu lấy từ bảng NHAN_VIEN)
-    // generateToken cần 2 param: userData (object chứa email) và password (plaintext)
+    // 2. Lấy profile nhân viên sau khi SQL Login thành công (không dùng để chặn đăng nhập)
+    const userResult = await userRepository.getUserByEmail(trimmedEmail);
+    const user = userResult.recordset[0];
+
+    if (!user) {
+      const pending =
+        await userRepository.getPendingRegistrationStatusByEmail(trimmedEmail);
+      if (pending?.RegistrationStatus === REGISTRATION_STATUS.OTP_VERIFIED) {
+        throw new Error("Tài khoản của bạn chưa được admin chấp nhận.");
+      }
+      throw new Error("Tài khoản chưa có hồ sơ nhân viên trong hệ thống.");
+    }
+
+    // 3. TẠO JWT TOKEN
     const token = generateToken(
       {
-        manv: user.MANV,
-        hoten: user.HOTEN,
-        email: user.EMAIL,
-        role: user.CHUCVU,
+        manv: user?.MANV || "",
+        hoten: user?.HOTEN || "",
+        email: user?.EMAIL || trimmedEmail,
+        role: user?.CHUCVU || "",
       },
       trimmedPassword, // Pass mật khẩu plaintext để mã hóa vào token
     );
 
-    console.log("✅ Login successful for user:", user.EMAIL);
+    console.log("✅ Login successful for user:", trimmedEmail);
     console.log("=== END LOGIN DEBUG ===\n");
 
     return {
@@ -160,11 +230,93 @@ const authService = {
       message: "Đăng nhập thành công!",
       token,
       user: {
-        manv: user.MANV,
-        hoten: user.HOTEN,
-        email: user.EMAIL,
-        role: user.CHUCVU,
+        manv: user?.MANV || "",
+        hoten: user?.HOTEN || "",
+        email: user?.EMAIL || trimmedEmail,
+        role: user?.CHUCVU || "",
       },
+    };
+  },
+
+  getPendingApprovals: async () => {
+    const data = await userRepository.getPendingApprovalList();
+    return {
+      success: true,
+      message: "Lấy danh sách hồ sơ chờ duyệt thành công",
+      data,
+    };
+  },
+
+  acceptPendingRegistration: async (payload) => {
+    const { email, approvedBy } = payload || {};
+    if (!email) {
+      throw new Error("Thiếu email hồ sơ cần duyệt");
+    }
+
+    const staged = await userRepository.getPendingApprovalByEmail(email);
+    if (!staged) {
+      throw new Error("Không tìm thấy hồ sơ chờ duyệt");
+    }
+
+    if (staged.RegistrationStatus !== REGISTRATION_STATUS.OTP_VERIFIED) {
+      throw new Error(
+        `Hồ sơ không ở trạng thái OTP_VERIFIED (hiện tại: ${staged.RegistrationStatus})`,
+      );
+    }
+
+    // API duyệt chỉ cần email + thông tin nhân sự; MANV/HOTEN được tự suy ra từ hồ sơ chờ.
+    const normalizedStagedName = String(staged.HoTen || "").trim();
+    const fallbackName = String(email).split("@")[0] || "Nhan vien moi";
+    const effectiveHoTen =
+      String(payload?.hoten || "").trim() ||
+      normalizedStagedName ||
+      fallbackName;
+    const effectiveManv =
+      String(payload?.manv || "").trim() ||
+      String(staged.MaNV || "").trim() ||
+      generateEmployeeId();
+
+    const originalPassword = decrypt(staged.PasswordMaHoa);
+    const result = await userRepository.approvePendingRegistration({
+      email,
+      password: originalPassword,
+      manv: effectiveManv,
+      hoten: effectiveHoTen,
+      maphg: payload.maphg,
+      luong: payload.luong,
+      chucvu: payload.chucvu,
+      approvedBy,
+    });
+
+    if (!result || result.Success === 0) {
+      throw new Error(result?.Message || "Duyệt hồ sơ thất bại");
+    }
+
+    return {
+      success: true,
+      message: result.Message,
+      data: result.Data,
+    };
+  },
+
+  rejectPendingRegistration: async (email, reason, rejectedBy) => {
+    if (!email) {
+      throw new Error("Thiếu email hồ sơ cần từ chối");
+    }
+
+    const ok = await userRepository.rejectPendingRegistration(
+      email,
+      reason,
+      rejectedBy,
+    );
+
+    if (!ok) {
+      throw new Error("Không thể từ chối hồ sơ ở trạng thái hiện tại");
+    }
+
+    return {
+      success: true,
+      message: "Đã từ chối hồ sơ đăng ký",
     };
   },
 
@@ -193,13 +345,14 @@ const authService = {
     }
 
     // 2. Xác thực mật khẩu cũ bằng cách thử kết nối SQL Server
+    const sqlAuthUser = buildAzureSqlAuthUser(email);
     const verifyConfig = {
-      user: email,
+      user: sqlAuthUser,
       password: oldPassword,
       server: process.env.DB_SERVER,
       database: process.env.DB_NAME,
       options: {
-        encrypt: false,
+        encrypt: true,
         trustServerCertificate: true,
         connectionTimeout: 30000,
         requestTimeout: 30000,
@@ -215,9 +368,11 @@ const authService = {
       throw new Error("Mật khẩu cũ không chính xác!");
     }
 
-    // 3. Thay đổi mật khẩu trên SQL Server
-    // TODO: Thêm stored procedure sp_DoiMatKhau hoặc cập nhật login credentials
-    const request = new sql.Request();
+    // 3. Đổi mật khẩu của contained database user
+    await userRepository.updateDatabaseUserPassword(email, newPassword);
+
+    // 4. Đồng bộ thông tin mật khẩu nội bộ (nếu hệ thống còn sử dụng cột này)
+    const request = appPool.request();
     try {
       await request
         .input("Email", sql.NVarChar, email)
@@ -249,10 +404,6 @@ const authService = {
     const userResult = await userRepository.getUserByEmail(email);
     const user = userResult.recordset[0];
 
-    if (!user) {
-      throw new Error("Email không tồn tại trong hệ thống!");
-    }
-
     // 2. Chuẩn bị dữ liệu cập nhật
     const updateData = {
       hoten: data.hoten,
@@ -267,38 +418,97 @@ const authService = {
       (key) => updateData[key] === undefined && delete updateData[key],
     );
 
+    // Nếu chưa có hồ sơ trong NHAN_VIEN: tự cấp MANV và tạo mới nhân viên.
+    if (!user) {
+      if (!data.hoten || String(data.hoten).trim() === "") {
+        throw new Error("Thiếu họ tên để tạo hồ sơ nhân viên mới!");
+      }
+
+      let manv = "";
+      for (let i = 0; i < 10; i++) {
+        const candidate = generateEmployeeId();
+        const existed = await appPool
+          .request()
+          .input("MaNV", sql.NVarChar(10), candidate)
+          .query(
+            "SELECT TOP 1 1 AS ExistsFlag FROM NHAN_VIEN WHERE MANV = @MaNV",
+          );
+
+        if (existed.recordset.length === 0) {
+          manv = candidate;
+          break;
+        }
+      }
+
+      if (!manv) {
+        throw new Error("Không thể tạo mã nhân viên mới, vui lòng thử lại!");
+      }
+
+      const request = appPool.request();
+      const gioiTinhValue = normalizeGenderToTinyInt(data.gioitinh);
+
+      await request
+        .input("MaNV", sql.NVarChar(10), manv)
+        .input("HoTen", sql.NVarChar(200), data.hoten)
+        .input("Email", sql.NVarChar(100), email)
+        .input("ChucVu", sql.NVarChar(100), data.chucvu || "Nhân viên")
+        .input("Luong", sql.Decimal(18, 2), data.luong ?? 0)
+        .input("MaPhg", sql.Int, data.maphg ?? null)
+        .input("NgaySinh", sql.Date, data.ngaysinh || null)
+        .input("GioiTinh", sql.TinyInt, gioiTinhValue)
+        .input("DiaChiNhan", sql.NVarChar(255), data.diachinhan || null)
+        .input("SDT", sql.NVarChar(15), data.sdt || null).query(`
+          INSERT INTO NHAN_VIEN
+            (MANV, HOTEN, EMAIL, CHUCVU, LUONG, MAPHG, NgaySinh, GioiTinh, DiaChi, SDT, NgayTuyenDung, IsVerified)
+          VALUES
+            (@MaNV, @HoTen, @Email, @ChucVu, @Luong, @MaPhg, @NgaySinh, @GioiTinh, @DiaChiNhan, @SDT, GETDATE(), 1)
+        `);
+
+      console.log("✅ Created profile for manual SQL user:", email, "=>", manv);
+      return {
+        success: true,
+        message: "Tạo hồ sơ nhân viên mới thành công!",
+        manv,
+      };
+    }
+
     if (Object.keys(updateData).length === 0) {
       throw new Error("Không có dữ liệu hợp lệ để cập nhật!");
     }
 
     // 3. Cập nhật vào DB
     try {
-      const request = new sql.Request();
+      const request = appPool.request();
       let updateFields = [];
-      let queryInput = { Email: email };
 
       for (let key in updateData) {
         if (updateData[key] !== undefined) {
           if (key === "hoten") updateFields.push("HOTEN = @HoTen");
           if (key === "ngaysinh") updateFields.push("NgaySinh = @NgaySinh");
           if (key === "gioitinh") updateFields.push("GioiTinh = @GioiTinh");
-          if (key === "diachinhan")
-            updateFields.push("DiaChi = @DiaChiNhan");
+          if (key === "diachinhan") updateFields.push("DiaChi = @DiaChiNhan");
           if (key === "sdt") updateFields.push("SDT = @SDT");
 
-          request.input(
-            key === "hoten"
-              ? "HoTen"
-              : key === "ngaysinh"
-                ? "NgaySinh"
-                : key === "gioitinh"
-                  ? "GioiTinh"
-                  : key === "diachinhan"
-                    ? "DiaChiNhan"
-                    : "SDT",
-            sql.NVarChar,
-            updateData[key],
-          );
+          if (key === "hoten") {
+            request.input("HoTen", sql.NVarChar, updateData[key]);
+          }
+
+          if (key === "ngaysinh") {
+            request.input("NgaySinh", sql.Date, updateData[key]);
+          }
+
+          if (key === "gioitinh") {
+            const gioiTinhValue = normalizeGenderToTinyInt(updateData[key]);
+            request.input("GioiTinh", sql.TinyInt, gioiTinhValue);
+          }
+
+          if (key === "diachinhan") {
+            request.input("DiaChiNhan", sql.NVarChar, updateData[key]);
+          }
+
+          if (key === "sdt") {
+            request.input("SDT", sql.NVarChar, updateData[key]);
+          }
         }
       }
 

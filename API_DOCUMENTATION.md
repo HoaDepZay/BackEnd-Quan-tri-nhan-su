@@ -27,11 +27,10 @@ Tài liệu này tổng hợp các danh sách endpoint của hệ thống Quản
 | Phương thức | Endpoint | Mô tả | Ghi chú |
 |:--- |:--- |:--- |:--- |
 | **GET** | `/` | Lấy danh sách toàn bộ nhân viên | |
-| **GET** | `/:id` | Xem chi tiết 1 nhân viên | |
+| **GET** | `/:id` | Xem chi tiết 1 nhân viên / Profile | |
 | **POST** | `/` | Thêm nhân viên mới | |
 | **PUT** | `/:id` | Cập nhật thông tin nhân viên | |
 | **DELETE** | `/:id` | Xóa/Khóa hồ sơ nhân viên | |
-| **GET** | `/profile/:manv` | Xem profile cá nhân (User) | Cần Token |
 | **GET** | `/my-projects/:manv` | Xem danh sách dự án tham gia | Cần Token |
 | **GET** | `/coworkers/:maphg` | Xem danh sách đồng nghiệp cùng phòng | Cần Token |
 | **PUT** | `/update-info` | NV tự cập nhật Email | |

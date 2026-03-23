@@ -25,15 +25,8 @@ const appConfig = {
   database: process.env.DB_NAME,
 };
 
-// 3. Cấu hình cho Database Hệ thống (master)
-const masterConfig = {
-  ...baseConfig,
-  database: process.env.DB_MASTER,
-};
-
 // Tạo các Pool kết nối
 const appPool = new sql.ConnectionPool(appConfig);
-const masterPool = new sql.ConnectionPool(masterConfig);
 
 /**
  * Hàm khởi tạo toàn bộ kết nối
@@ -43,12 +36,6 @@ const connectDB = async () => {
     // Kết nối vào DB chính
     await appPool.connect();
     console.log(`✅ Kết nối thành công Database: ${process.env.DB_NAME}`);
-
-    // Kết nối vào DB master (Dùng để quản lý Login)
-    await masterPool.connect();
-    console.log(
-      `✅ Kết nối thành công Database: master (Sẵn sàng quản trị Login)`,
-    );
   } catch (err: any) {
     console.error("❌ Lỗi kết nối SQL Server:", err.message);
     process.exit(1);
@@ -56,4 +43,4 @@ const connectDB = async () => {
 };
 
 // Export các Pool và thư viện sql để sử dụng ở các Service
-export { connectDB, appPool, masterPool, sql };
+export { connectDB, appPool, sql };
