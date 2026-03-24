@@ -59,6 +59,35 @@ const login = async (req, res) => {
   }
 };
 
+const refreshToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu refresh token!",
+      });
+    }
+
+    const result = await authService.refreshSession(refreshToken);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const logout = async (_req, res) => {
+  return res.status(200).json({
+    success: true,
+    message:
+      "Đăng xuất thành công! Vui lòng xóa accessToken/refreshToken ở client.",
+  });
+};
+
 const changePassword = async (req, res) => {
   try {
     const { email, oldPassword, newPassword } = req.body;
@@ -163,6 +192,8 @@ export default {
   register,
   verifyOtp,
   login,
+  refreshToken,
+  logout,
   changePassword,
   updateProfile,
   getPendingApprovals,

@@ -29,11 +29,14 @@ const generateEmployeeId = () => {
 const buildAzureSqlAuthUser = (loginName) => {
     const server = process.env.DB_SERVER || "";
     const azureServerShortName = server.split(".")[0];
-    // Azure SQL có thể hiểu sai phần sau @ trong email là tên server.
-    // Khi login chứa @, thêm @<server-short-name> để định tuyến đúng.
-    if (loginName.includes("@") &&
-        azureServerShortName &&
-        !loginName.toLowerCase().endsWith(`@${azureServerShortName.toLowerCase()}`)) {
+    // Nếu email chứa @ (ví dụ: dangquanghoa206@gmail.com) thì dùng nguyên thể
+    // Chỉ thêm @server nếu loginName KHÔNG phải email (tức là tên username thuần, không có @)
+    if (loginName.includes("@")) {
+        // Đó là email - dùng nguyên thể (không thêm @server)
+        return loginName;
+    }
+    // Nếu không có @, giả định đó là username thuần, thêm @server để Azure định tuyến
+    if (azureServerShortName) {
         return `${loginName}@${azureServerShortName}`;
     }
     return loginName;
@@ -177,24 +180,51 @@ const authService = {
             }
             throw new Error("Tài khoản chưa có hồ sơ nhân viên trong hệ thống.");
         }
-        // 3. TẠO JWT TOKEN
-        const token = (0, jwtHelper_1.generateToken)({
+        // 3. TẠO JWT ACCESS/REFRESH TOKEN
+        const tokenPayload = {
             manv: user?.MANV || "",
             hoten: user?.HOTEN || "",
             email: user?.EMAIL || trimmedEmail,
             role: user?.CHUCVU || "",
-        }, trimmedPassword);
+        };
+        const token = (0, jwtHelper_1.generateToken)(tokenPayload, trimmedPassword);
+        const refreshToken = (0, jwtHelper_1.generateRefreshToken)((0, jwtHelper_1.createAccessPayload)(tokenPayload, trimmedPassword));
         console.log("✅ Login successful for user:", trimmedEmail);
         console.log("=== END LOGIN DEBUG ===\n");
         return {
             success: true,
             message: "Đăng nhập thành công!",
             token,
+            accessToken: token,
+            refreshToken,
             user: {
-                manv: user?.MANV || "",
-                hoten: user?.HOTEN || "",
-                email: user?.EMAIL || trimmedEmail,
-                role: user?.CHUCVU || "",
+                manv: tokenPayload.manv,
+                hoten: tokenPayload.hoten,
+                email: tokenPayload.email,
+                role: tokenPayload.role,
+            },
+        };
+    },
+    refreshSession: async (refreshToken) => {
+        if (!refreshToken) {
+            throw new Error("Thiếu refresh token");
+        }
+        const decoded = (0, jwtHelper_1.verifyRefreshToken)(refreshToken);
+        if (decoded?.tokenType !== "refresh") {
+            throw new Error("Token gửi lên không phải refresh token");
+        }
+        const rotated = (0, jwtHelper_1.rotateTokens)(refreshToken);
+        return {
+            success: true,
+            message: "Làm mới phiên đăng nhập thành công",
+            token: rotated.accessToken,
+            accessToken: rotated.accessToken,
+            refreshToken: rotated.refreshToken,
+            user: {
+                manv: decoded?.session?.userInfo?.manv || "",
+                hoten: decoded?.session?.userInfo?.hoten || "",
+                email: decoded?.session?.userInfo?.email || "",
+                role: decoded?.session?.userInfo?.role || "",
             },
         };
     },

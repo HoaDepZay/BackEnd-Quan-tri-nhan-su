@@ -4,7 +4,13 @@ import sql from "mssql"; // Cần mssql để thử kết nối lúc Login
 import { appPool } from "../config/db";
 import userRepository from "../repositories/userRepository";
 import { sendOTPMail } from "../utils/mailHelper";
-import { generateToken } from "../utils/jwtHelper";
+import {
+  createAccessPayload,
+  generateRefreshToken,
+  generateToken,
+  rotateTokens,
+  verifyRefreshToken,
+} from "../utils/jwtHelper";
 import { decrypt, encrypt } from "../utils/encryptionHelper";
 
 const REGISTRATION_STATUS = {
@@ -28,13 +34,15 @@ const buildAzureSqlAuthUser = (loginName: string) => {
   const server = process.env.DB_SERVER || "";
   const azureServerShortName = server.split(".")[0];
 
-  // Azure SQL có thể hiểu sai phần sau @ trong email là tên server.
-  // Khi login chứa @, thêm @<server-short-name> để định tuyến đúng.
-  if (
-    loginName.includes("@") &&
-    azureServerShortName &&
-    !loginName.toLowerCase().endsWith(`@${azureServerShortName.toLowerCase()}`)
-  ) {
+  // Nếu email chứa @ (ví dụ: dangquanghoa206@gmail.com) thì dùng nguyên thể
+  // Chỉ thêm @server nếu loginName KHÔNG phải email (tức là tên username thuần, không có @)
+  if (loginName.includes("@")) {
+    // Đó là email - dùng nguyên thể (không thêm @server)
+    return loginName;
+  }
+
+  // Nếu không có @, giả định đó là username thuần, thêm @server để Azure định tuyến
+  if (azureServerShortName) {
     return `${loginName}@${azureServerShortName}`;
   }
 
@@ -211,15 +219,20 @@ const authService = {
       throw new Error("Tài khoản chưa có hồ sơ nhân viên trong hệ thống.");
     }
 
-    // 3. TẠO JWT TOKEN
+    // 3. TẠO JWT ACCESS/REFRESH TOKEN
+    const tokenPayload = {
+      manv: user?.MANV || "",
+      hoten: user?.HOTEN || "",
+      email: user?.EMAIL || trimmedEmail,
+      role: user?.CHUCVU || "",
+    };
+
     const token = generateToken(
-      {
-        manv: user?.MANV || "",
-        hoten: user?.HOTEN || "",
-        email: user?.EMAIL || trimmedEmail,
-        role: user?.CHUCVU || "",
-      },
+      tokenPayload,
       trimmedPassword, // Pass mật khẩu plaintext để mã hóa vào token
+    );
+    const refreshToken = generateRefreshToken(
+      createAccessPayload(tokenPayload, trimmedPassword),
     );
 
     console.log("✅ Login successful for user:", trimmedEmail);
@@ -229,11 +242,40 @@ const authService = {
       success: true,
       message: "Đăng nhập thành công!",
       token,
+      accessToken: token,
+      refreshToken,
       user: {
-        manv: user?.MANV || "",
-        hoten: user?.HOTEN || "",
-        email: user?.EMAIL || trimmedEmail,
-        role: user?.CHUCVU || "",
+        manv: tokenPayload.manv,
+        hoten: tokenPayload.hoten,
+        email: tokenPayload.email,
+        role: tokenPayload.role,
+      },
+    };
+  },
+
+  refreshSession: async (refreshToken) => {
+    if (!refreshToken) {
+      throw new Error("Thiếu refresh token");
+    }
+
+    const decoded: any = verifyRefreshToken(refreshToken);
+    if (decoded?.tokenType !== "refresh") {
+      throw new Error("Token gửi lên không phải refresh token");
+    }
+
+    const rotated = rotateTokens(refreshToken);
+
+    return {
+      success: true,
+      message: "Làm mới phiên đăng nhập thành công",
+      token: rotated.accessToken,
+      accessToken: rotated.accessToken,
+      refreshToken: rotated.refreshToken,
+      user: {
+        manv: decoded?.session?.userInfo?.manv || "",
+        hoten: decoded?.session?.userInfo?.hoten || "",
+        email: decoded?.session?.userInfo?.email || "",
+        role: decoded?.session?.userInfo?.role || "",
       },
     };
   },

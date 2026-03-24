@@ -9,11 +9,15 @@ const buildAzureSqlAuthUser = (loginName: string) => {
   const server = process.env.DB_SERVER || "";
   const azureServerShortName = server.split(".")[0];
 
-  if (
-    loginName.includes("@") &&
-    azureServerShortName &&
-    !loginName.toLowerCase().endsWith(`@${azureServerShortName.toLowerCase()}`)
-  ) {
+  // Nếu email chứa @ (ví dụ: dangquanghoa206@gmail.com) thì dùng nguyên thể
+  // Chỉ thêm @server nếu loginName KHÔNG phải email (tức là tên username thuần, không có @)
+  if (loginName.includes("@")) {
+    // Đó là email - dùng nguyên thể (không thêm @server)
+    return loginName;
+  }
+
+  // Nếu không có @, giả định đó là username thuần, thêm @server để Azure định tuyến
+  if (azureServerShortName) {
     return `${loginName}@${azureServerShortName}`;
   }
 
