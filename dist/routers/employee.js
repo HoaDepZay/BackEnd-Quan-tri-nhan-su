@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -6,7 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const router = express_1.default.Router();
 const msnodesqlv8_1 = __importDefault(require("msnodesqlv8"));
-const authMiddleware_1 = __importDefault(require("../middleware/authMiddleware"));
+const authMiddleware_1 = __importStar(require("../middleware/authMiddleware"));
 const employeeController_1 = __importDefault(require("../controllers/employeeController"));
 const db_1 = require("../config/db");
 // ⚠️ ROUTES SPECIFIC PHẢI TRƯỚC GENERIC ROUTES (/:id)
@@ -47,13 +80,13 @@ router.put("/update-info", async (req, res) => {
 });
 // 2️⃣ GENERIC ROUTES (list, detail, create, update, delete)
 // GET /api/employees - Lấy danh sách nhân viên
-router.get("/", employeeController_1.default.getAllEmployees);
-// POST /api/employees - Thêm nhân viên mới
-router.post("/", employeeController_1.default.createEmployee);
+router.get("/", authMiddleware_1.default, employeeController_1.default.getAllEmployees);
+// POST /api/employees - Thêm nhân viên mới (Admin)
+router.post("/", authMiddleware_1.default, authMiddleware_1.requireAdmin, employeeController_1.default.createEmployee);
 // GET /api/employees/:id - Xem chi tiết 1 nhân viên
-router.get("/:id", employeeController_1.default.getEmployeeById);
-// PUT /api/employees/:id - Cập nhật thông tin nhân viên
-router.put("/:id", employeeController_1.default.updateEmployee);
-// DELETE /api/employees/:id - Xóa/Khóa nhân viên
-router.delete("/:id", employeeController_1.default.deleteEmployee);
+router.get("/:id", authMiddleware_1.default, employeeController_1.default.getEmployeeById);
+// PUT /api/employees/:id - Cập nhật thông tin nhân viên (Admin)
+router.put("/:id", authMiddleware_1.default, authMiddleware_1.requireAdmin, employeeController_1.default.updateEmployee);
+// DELETE /api/employees/:id - Xóa/Khóa nhân viên (Admin)
+router.delete("/:id", authMiddleware_1.default, authMiddleware_1.requireAdmin, employeeController_1.default.deleteEmployee);
 exports.default = router;

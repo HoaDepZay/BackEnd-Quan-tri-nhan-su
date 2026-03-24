@@ -1,7 +1,7 @@
 import express from "express";
 const router = express.Router();
 import sql from "msnodesqlv8";
-import withUserConnection from "../middleware/authMiddleware";
+import withUserConnection, { requireAdmin } from "../middleware/authMiddleware";
 import employeeController from "../controllers/employeeController";
 import { appPool, sql as globalSql } from "../config/db";
 
@@ -51,18 +51,33 @@ router.put("/update-info", async (req, res) => {
 
 // 2️⃣ GENERIC ROUTES (list, detail, create, update, delete)
 // GET /api/employees - Lấy danh sách nhân viên
-router.get("/", employeeController.getAllEmployees);
+router.get("/", withUserConnection, employeeController.getAllEmployees);
 
-// POST /api/employees - Thêm nhân viên mới
-router.post("/", employeeController.createEmployee);
+// POST /api/employees - Thêm nhân viên mới (Admin)
+router.post(
+  "/",
+  withUserConnection,
+  requireAdmin,
+  employeeController.createEmployee,
+);
 
 // GET /api/employees/:id - Xem chi tiết 1 nhân viên
-router.get("/:id", employeeController.getEmployeeById);
+router.get("/:id", withUserConnection, employeeController.getEmployeeById);
 
-// PUT /api/employees/:id - Cập nhật thông tin nhân viên
-router.put("/:id", employeeController.updateEmployee);
+// PUT /api/employees/:id - Cập nhật thông tin nhân viên (Admin)
+router.put(
+  "/:id",
+  withUserConnection,
+  requireAdmin,
+  employeeController.updateEmployee,
+);
 
-// DELETE /api/employees/:id - Xóa/Khóa nhân viên
-router.delete("/:id", employeeController.deleteEmployee);
+// DELETE /api/employees/:id - Xóa/Khóa nhân viên (Admin)
+router.delete(
+  "/:id",
+  withUserConnection,
+  requireAdmin,
+  employeeController.deleteEmployee,
+);
 
 export default router;

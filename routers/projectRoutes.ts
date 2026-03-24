@@ -1,28 +1,69 @@
 import express from "express";
 import projectController from "../controllers/projectController";
+import withUserConnection, { requireAdmin } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
 // Lấy danh sách dự án
-router.get("/", projectController.getAllProjects);
+router.get(
+  "/",
+  withUserConnection,
+  requireAdmin,
+  projectController.getAllProjects,
+);
 
 // Lấy chi tiết dự án & thành viên
-router.get("/:id", projectController.getProjectById);
+router.get(
+  "/:id",
+  withUserConnection,
+  requireAdmin,
+  projectController.getProjectById,
+);
 
 // Thêm dự án mới
-router.post("/", projectController.createProject);
+router.post(
+  "/",
+  withUserConnection,
+  requireAdmin,
+  projectController.createProject,
+);
 
 // Xem dự án của 1 nhân viên
-router.get("/employee/:id", projectController.getEmployeeProjects);
+router.get(
+  "/employee/:id",
+  withUserConnection,
+  requireAdmin,
+  projectController.getEmployeeProjects,
+);
 
 // Cập nhật dự án
-router.put("/:id", projectController.updateProject);
+router.put(
+  "/:id",
+  withUserConnection,
+  requireAdmin,
+  projectController.updateProject,
+);
 
 // Xóa dự án
-router.delete("/:id", projectController.deleteProject);
+router.delete(
+  "/:id",
+  withUserConnection,
+  requireAdmin,
+  projectController.deleteProject,
+);
 
 // Thành viên dự án
-router.post("/:id/members", projectController.addProjectMember);
-router.delete("/:id/members/:employeeId", projectController.removeProjectMember);
+router.post(
+  "/:id/members",
+  withUserConnection,
+  requireAdmin,
+  projectController.addProjectMember,
+);
+router.delete(
+  "/:id/members/:employeeId",
+  withUserConnection,
+  requireAdmin,
+  projectController.removeProjectMember,
+);
 
 export default router;

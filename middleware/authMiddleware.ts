@@ -71,4 +71,34 @@ const withUserConnection = (req, res, next) => {
   }
 };
 
+// 🔐 Middleware kiểm tra quyền Admin (gọi sau withUserConnection)
+const requireAdmin = (req, res, next) => {
+  const userRole = req.user?.userInfo?.role;
+  const userEmail = req.user?.userEmail;
+
+  console.log(`🔒 Admin check for user: ${userEmail}, role: ${userRole}`);
+
+  const normalizeRole = (role: unknown) =>
+    String(role || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .trim();
+
+  const normalizedRole = normalizeRole(userRole);
+
+  // Chỉ cho phép đúng CHUCVU = admin
+  if (normalizedRole !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message:
+        "Bạn không có quyền truy cập tài nguyên này. Chỉ admin mới có thể.",
+    });
+  }
+
+  next();
+};
+
+export { withUserConnection, requireAdmin };
 export default withUserConnection;

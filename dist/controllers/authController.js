@@ -80,14 +80,24 @@ const changePassword = async (req, res) => {
 };
 const updateProfile = async (req, res) => {
     try {
-        const { email } = req.body;
-        if (!email) {
-            return res.status(400).json({
+        // 🔐 Lấy email của user đang đăng nhập từ JWT token
+        const currentUserEmail = req.user?.userEmail;
+        if (!currentUserEmail) {
+            return res.status(401).json({
                 success: false,
-                message: "Email không được để trống!",
+                message: "Chưa đăng nhập!",
             });
         }
-        const result = await authService_1.default.updateProfile(email, req.body);
+        // 📋 Email cần cập nhật - có thể từ body hoặc chính user hiện tại
+        const targetEmail = req.body.email || currentUserEmail;
+        // 🔒 KIỂM TRA QUYỀN: User chỉ có thể cập nhật profile của chính mình
+        if (currentUserEmail.toLowerCase() !== targetEmail.toLowerCase()) {
+            return res.status(403).json({
+                success: false,
+                message: "Bạn không có quyền cập nhật thông tin của người khác!",
+            });
+        }
+        const result = await authService_1.default.updateProfile(targetEmail, req.body);
         return res.status(200).json(result);
     }
     catch (error) {

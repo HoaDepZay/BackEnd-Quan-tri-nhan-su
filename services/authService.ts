@@ -409,7 +409,7 @@ const authService = {
       hoten: data.hoten,
       ngaysinh: data.ngaysinh,
       gioitinh: data.gioitinh,
-      diachinhan: data.diachinhan,
+      diachinhan: data.diachinhan || data.diachi, // Support both naming conventions
       sdt: data.sdt,
     };
 

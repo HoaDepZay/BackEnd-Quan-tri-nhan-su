@@ -41,7 +41,6 @@ const employeeService = {
             throw new Error("Lỗi lấy thông tin nhân viên: " + error.message);
         }
     },
-    // 3. Thêm nhân viên mới (Admin)
     createEmployee: async (data) => {
         try {
             // Validate dữ liệu
@@ -172,7 +171,7 @@ const employeeService = {
                 hoten: data.hoten,
                 ngaysinh: data.ngaysinh,
                 gioitinh: data.gioitinh,
-                diachinhan: data.diachinhan,
+                diachinhan: data.diachinhan || data.diachi, // Support both naming conventions
             };
             // Lọc các trường undefined
             Object.keys(updateData).forEach((key) => updateData[key] === undefined && delete updateData[key]);

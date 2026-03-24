@@ -196,9 +196,10 @@ const employeeRepository = {
       updateFields.push("GioiTinh = @GioiTinh");
       request.input("GioiTinh", sql.NVarChar, data.gioitinh);
     }
-    if (data.diachinhan !== undefined) {
+    const diaChiValue = data.diachinhan || data.diachi; // Support both naming conventions
+    if (diaChiValue !== undefined) {
       updateFields.push("DiaChi = @DiaChiNhan");
-      request.input("DiaChiNhan", sql.NVarChar, data.diachinhan);
+      request.input("DiaChiNhan", sql.NVarChar, diaChiValue);
     }
 
     if (updateFields.length === 0) {
