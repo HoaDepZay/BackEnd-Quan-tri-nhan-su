@@ -14,6 +14,7 @@ const admin_1 = __importDefault(require("./routers/admin"));
 const departmentRoutes_1 = __importDefault(require("./routers/departmentRoutes"));
 const projectRoutes_1 = __importDefault(require("./routers/projectRoutes"));
 const payrollRoutes_1 = __importDefault(require("./routers/payrollRoutes"));
+const dashboardRoutes_1 = __importDefault(require("./routers/dashboardRoutes"));
 const swagger_ui_express_1 = __importDefault(require("swagger-ui-express"));
 const yamljs_1 = __importDefault(require("yamljs"));
 const path_1 = __importDefault(require("path"));
@@ -39,6 +40,7 @@ app.use("/api/admin", admin_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/projects", projectRoutes_1.default);
 app.use("/api/payroll", payrollRoutes_1.default);
+app.use("/api/dashboard", dashboardRoutes_1.default);
 console.log("🔍 Đang kết nối Database...");
 // Sử dụng hàm connectDB (async) đã viết ở db.js
 (0, db_1.connectDB)()

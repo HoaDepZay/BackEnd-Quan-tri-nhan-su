@@ -84,6 +84,44 @@ const logout = async (_req, res) => {
         message: "Đăng xuất thành công! Vui lòng xóa accessToken/refreshToken ở client.",
     });
 };
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: "Vui lòng nhập email!",
+            });
+        }
+        const result = await authService_1.default.forgotPassword(email);
+        return res.status(200).json(result);
+    }
+    catch (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+const resetForgotPassword = async (req, res) => {
+    try {
+        const { email, otpCode, newPassword } = req.body;
+        if (!email || !otpCode || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "Vui lòng nhập đầy đủ email, mã OTP và mật khẩu mới!",
+            });
+        }
+        const result = await authService_1.default.resetForgotPassword(email, otpCode, newPassword);
+        return res.status(200).json(result);
+    }
+    catch (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
 const changePassword = async (req, res) => {
     try {
         const { email, oldPassword, newPassword } = req.body;
@@ -175,6 +213,8 @@ exports.default = {
     login,
     refreshToken,
     logout,
+    forgotPassword,
+    resetForgotPassword,
     changePassword,
     updateProfile,
     getPendingApprovals,

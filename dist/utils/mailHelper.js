@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendOTPMail = void 0;
+exports.sendForgotPasswordOTPMail = exports.sendOTPMail = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const transporter = nodemailer_1.default.createTransport({
     service: "gmail",
@@ -26,3 +26,17 @@ const sendOTPMail = async (email, otpCode) => {
     return transporter.sendMail(mailOptions);
 };
 exports.sendOTPMail = sendOTPMail;
+const sendForgotPasswordOTPMail = async (email, otpCode) => {
+    const mailOptions = {
+        from: '"Phòng Nhân Sự" <no-reply@company.com>',
+        to: email,
+        subject: "Mã OTP đặt lại mật khẩu HRM",
+        html: `<div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px;">
+            <h2>Quên mật khẩu</h2>
+            <p>Mã OTP đặt lại mật khẩu của bạn là: <b style="font-size: 24px; color: #dc3545;">${otpCode}</b></p>
+            <p>Mã này có hiệu lực trong 10 phút. Nếu không phải bạn yêu cầu, vui lòng bỏ qua email này.</p>
+          </div>`,
+    };
+    return transporter.sendMail(mailOptions);
+};
+exports.sendForgotPasswordOTPMail = sendForgotPasswordOTPMail;

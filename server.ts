@@ -10,6 +10,7 @@ import adminRoutes from "./routers/admin";
 import departmentRoutes from "./routers/departmentRoutes";
 import projectRoutes from "./routers/projectRoutes";
 import payrollRoutes from "./routers/payrollRoutes";
+import dashboardRoutes from "./routers/dashboardRoutes";
 
 import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
@@ -41,6 +42,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/payroll", payrollRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 console.log("🔍 Đang kết nối Database...");
 

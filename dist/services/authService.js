@@ -57,6 +57,7 @@ const normalizeGenderToTinyInt = (value) => {
     }
     throw new Error("Giới tính không hợp lệ. Dùng Nam/Nữ hoặc 1/0");
 };
+const RESET_OTP_EXPIRE_MINUTES = 10;
 const authService = {
     register: async (userData) => {
         // Kiểm tra xem Email đã tồn tại chính thức chưa
@@ -285,6 +286,57 @@ const authService = {
             message: "Đã từ chối hồ sơ đăng ký",
         };
     },
+    forgotPassword: async (email) => {
+        const normalizedEmail = String(email || "").trim();
+        if (!normalizedEmail) {
+            throw new Error("Vui lòng nhập email!");
+        }
+        const userResult = await userRepository_1.default.getUserByEmail(normalizedEmail);
+        const user = userResult.recordset[0];
+        // Không làm lộ email tồn tại hay không.
+        if (!user) {
+            return {
+                success: true,
+                message: "Nếu email tồn tại, hệ thống đã gửi mã OTP đặt lại mật khẩu.",
+            };
+        }
+        const otpCode = crypto_1.default.randomInt(100000, 999999).toString();
+        const expiredAt = new Date(Date.now() + RESET_OTP_EXPIRE_MINUTES * 60 * 1000);
+        const saved = await userRepository_1.default.savePasswordResetOtp(normalizedEmail, otpCode, expiredAt);
+        if (!saved) {
+            throw new Error("Không thể tạo OTP đặt lại mật khẩu. Vui lòng thử lại.");
+        }
+        (0, mailHelper_1.sendForgotPasswordOTPMail)(normalizedEmail, otpCode).catch((err) => console.error("Lỗi gửi OTP quên mật khẩu:", err));
+        return {
+            success: true,
+            message: "Nếu email tồn tại, hệ thống đã gửi mã OTP đặt lại mật khẩu.",
+        };
+    },
+    resetForgotPassword: async (email, otpCode, newPassword) => {
+        const normalizedEmail = String(email || "").trim();
+        const normalizedOtp = String(otpCode || "").trim();
+        if (!normalizedEmail || !normalizedOtp || !newPassword) {
+            throw new Error("Vui lòng nhập đầy đủ email, mã OTP và mật khẩu mới!");
+        }
+        if (newPassword.length < 6) {
+            throw new Error("Mật khẩu mới phải có ít nhất 6 ký tự!");
+        }
+        const userResult = await userRepository_1.default.getUserByEmail(normalizedEmail);
+        const user = userResult.recordset[0];
+        if (!user) {
+            throw new Error("Email không tồn tại trong hệ thống!");
+        }
+        const validOtp = await userRepository_1.default.verifyPasswordResetOtp(normalizedEmail, normalizedOtp);
+        if (!validOtp) {
+            throw new Error("Mã OTP không đúng hoặc đã hết hạn!");
+        }
+        await userRepository_1.default.updateDatabaseUserPassword(normalizedEmail, newPassword);
+        await userRepository_1.default.clearPasswordResetOtp(normalizedEmail);
+        return {
+            success: true,
+            message: "Đặt lại mật khẩu thành công!",
+        };
+    },
     // 8. Đổi mật khẩu
     changePassword: async (email, oldPassword, newPassword) => {
         console.log("🔄 Changing password for:", email);
@@ -328,17 +380,6 @@ const authService = {
         }
         // 3. Đổi mật khẩu của contained database user
         await userRepository_1.default.updateDatabaseUserPassword(email, newPassword);
-        // 4. Đồng bộ thông tin mật khẩu nội bộ (nếu hệ thống còn sử dụng cột này)
-        const request = db_1.appPool.request();
-        try {
-            await request
-                .input("Email", mssql_1.default.NVarChar, email)
-                .input("NewPassword", mssql_1.default.NVarChar, newPassword)
-                .query("UPDATE NHAN_VIEN SET PASSWORD_HASH = @NewPassword WHERE EMAIL = @Email");
-        }
-        catch (err) {
-            throw new Error("Lỗi cập nhật mật khẩu: " + err.message);
-        }
         console.log("✅ Password changed successfully for:", email);
         return {
             success: true,

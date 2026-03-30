@@ -1,0 +1,149 @@
+import dashboardService from "../services/dashboardService";
+
+const dashboardController = {
+  // 1. GET /api/dashboard/summary - Lấy tóm tắt dashboard
+  getDashboardSummary: async (req, res) => {
+    try {
+      const result = await dashboardService.getDashboardSummary();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 2. GET /api/dashboard/employees-by-department - Thống kê nhân viên theo phòng ban
+  getEmployeeByDepartment: async (req, res) => {
+    try {
+      const result = await dashboardService.getEmployeeByDepartment();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 3. GET /api/dashboard/projects - Thống kê dự án
+  getProjectStatistics: async (req, res) => {
+    try {
+      const result = await dashboardService.getProjectStatistics();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 4. GET /api/dashboard/projects-near-deadline - Top dự án gần deadline
+  getProjectsNearDeadline: async (req, res) => {
+    try {
+      const result = await dashboardService.getProjectsNearDeadline();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 5. GET /api/dashboard/payroll-statistics - Thống kê lương theo tháng
+  getPayrollStatistics: async (req, res) => {
+    try {
+      const { thang, nam } = req.query;
+      const result = await dashboardService.getPayrollStatistics(thang, nam);
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 6. GET /api/dashboard/employees-by-position - Thống kê nhân viên theo chức danh
+  getEmployeeByPosition: async (req, res) => {
+    try {
+      const result = await dashboardService.getEmployeeByPosition();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 7. GET /api/dashboard/recent-activities - Hoạt động gần đây
+  getRecentActivities: async (req, res) => {
+    try {
+      const result = await dashboardService.getRecentActivities();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 8. GET /api/dashboard/main - Dashboard chính (tất cả thông tin)
+  getMainDashboard: async (req, res) => {
+    try {
+      const result = await dashboardService.getMainDashboard();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 9. GET /api/dashboard/payroll-trendline - Trendline lương 6 tháng
+  getPayrollTrendline: async (req, res) => {
+    try {
+      const result = await dashboardService.getPayrollTrendline();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 10. GET /api/dashboard/project-trendline - Trendline dự án
+  getProjectTrendline: async (req, res) => {
+    try {
+      const result = await dashboardService.getProjectTrendline();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // 11. GET /api/dashboard/report - Report Dashboard (dành cho Admin)
+  getDashboardReport: async (req, res) => {
+    try {
+      const result = await dashboardService.getDashboardReport();
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+};
+
+export default dashboardController;

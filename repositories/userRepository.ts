@@ -110,11 +110,161 @@ const userRepository = {
     const safeEmailLiteral = String(email).replace(/'/g, "''");
     const safePassword = String(newPassword).replace(/'/g, "''");
 
-    await appPool.request().query(`
-      IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
+    try {
+      await appPool.request().query(`
+        IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
+        BEGIN
+          ALTER USER ${safeIdentifier} WITH PASSWORD = '${safePassword}';
+        END
+      `);
+      return;
+    } catch (error: any) {
+      const errMessage = String(error?.message || "");
+      const mustUseLoginChange =
+        errMessage.includes(
+          "The parameter PASSWORD cannot be provided for users that cannot authenticate in a database",
+        ) || errMessage.includes("cannot authenticate in a database");
+
+      if (!mustUseLoginChange) {
+        throw error;
+      }
+    }
+
+    const masterConfig: sql.config = {
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      server: process.env.DB_SERVER || "",
+      port: parseInt(process.env.DB_PORT || "1433"),
+      database: "master",
+      options: {
+        encrypt: true,
+        trustServerCertificate: true,
+        connectTimeout: 30000,
+      },
+      pool: {
+        max: 3,
+        min: 0,
+        idleTimeoutMillis: 30000,
+      },
+    };
+
+    const masterPool = new sql.ConnectionPool(masterConfig);
+
+    try {
+      await masterPool.connect();
+      await masterPool.request().query(`
+        IF EXISTS (SELECT 1 FROM sys.sql_logins WHERE name = N'${safeEmailLiteral}')
+        BEGIN
+          ALTER LOGIN ${safeIdentifier} WITH PASSWORD = '${safePassword}';
+        END
+      `);
+    } catch (error: any) {
+      throw new Error(
+        "Không thể đổi mật khẩu SQL Login trên master. Hãy kiểm tra quyền ALTER ANY LOGIN hoặc SECURITYADMIN. Chi tiết: " +
+          error.message,
+      );
+    } finally {
+      await masterPool.close().catch(() => undefined);
+    }
+  },
+
+  savePasswordResetOtp: async (email, otpCode, expiredAt) => {
+    const result = await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email)
+      .input("OtpCode", sql.NVarChar(6), otpCode)
+      .input("ExpiredAt", sql.DateTime, expiredAt).query(`
+        DECLARE @ExpiryCol NVARCHAR(128) = NULL;
+
+        IF COL_LENGTH('dbo.NHAN_VIEN', 'CodeExpiredAt') IS NOT NULL
+          SET @ExpiryCol = 'CodeExpiredAt';
+        ELSE IF COL_LENGTH('dbo.NHAN_VIEN', 'CodeExpireAt') IS NOT NULL
+          SET @ExpiryCol = 'CodeExpireAt';
+
+        IF COL_LENGTH('dbo.NHAN_VIEN', 'VerificationCode') IS NULL OR @ExpiryCol IS NULL
+        BEGIN
+          THROW 50001, N'Thieu cot VerificationCode/CodeExpiredAt (hoac CodeExpireAt) trong bang NHAN_VIEN', 1;
+        END
+
+        DECLARE @sql NVARCHAR(MAX) = N'
+          UPDATE NHAN_VIEN
+          SET VerificationCode = @OtpCode, ' + QUOTENAME(@ExpiryCol) + N' = @ExpiredAt
+          WHERE EMAIL = @Email;
+
+          SELECT @@ROWCOUNT AS AffectedRows;
+        ';
+
+        EXEC sp_executesql
+          @sql,
+          N'@OtpCode NVARCHAR(6), @ExpiredAt DATETIME, @Email NVARCHAR(100)',
+          @OtpCode = @OtpCode,
+          @ExpiredAt = @ExpiredAt,
+          @Email = @Email;
+      `);
+
+    return (result.recordset?.[0]?.AffectedRows || 0) > 0;
+  },
+
+  verifyPasswordResetOtp: async (email, otpCode) => {
+    const result = await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email)
+      .input("OtpCode", sql.NVarChar(6), otpCode).query(`
+        DECLARE @ExpiryCol NVARCHAR(128) = NULL;
+
+        IF COL_LENGTH('dbo.NHAN_VIEN', 'CodeExpiredAt') IS NOT NULL
+          SET @ExpiryCol = 'CodeExpiredAt';
+        ELSE IF COL_LENGTH('dbo.NHAN_VIEN', 'CodeExpireAt') IS NOT NULL
+          SET @ExpiryCol = 'CodeExpireAt';
+
+        IF COL_LENGTH('dbo.NHAN_VIEN', 'VerificationCode') IS NULL OR @ExpiryCol IS NULL
+        BEGIN
+          THROW 50001, N'Thieu cot VerificationCode/CodeExpiredAt (hoac CodeExpireAt) trong bang NHAN_VIEN', 1;
+        END
+
+        DECLARE @sql NVARCHAR(MAX) = N'
+          SELECT TOP 1 MANV, EMAIL
+          FROM NHAN_VIEN
+          WHERE EMAIL = @Email
+            AND VerificationCode = @OtpCode
+            AND ' + QUOTENAME(@ExpiryCol) + N' > GETDATE()
+        ';
+
+        EXEC sp_executesql
+          @sql,
+          N'@OtpCode NVARCHAR(6), @Email NVARCHAR(100)',
+          @OtpCode = @OtpCode,
+          @Email = @Email;
+      `);
+
+    return result.recordset[0] || null;
+  },
+
+  clearPasswordResetOtp: async (email) => {
+    await appPool.request().input("Email", sql.NVarChar(100), email).query(`
+      DECLARE @ExpiryCol NVARCHAR(128) = NULL;
+
+      IF COL_LENGTH('dbo.NHAN_VIEN', 'CodeExpiredAt') IS NOT NULL
+        SET @ExpiryCol = 'CodeExpiredAt';
+      ELSE IF COL_LENGTH('dbo.NHAN_VIEN', 'CodeExpireAt') IS NOT NULL
+        SET @ExpiryCol = 'CodeExpireAt';
+
+      IF COL_LENGTH('dbo.NHAN_VIEN', 'VerificationCode') IS NULL OR @ExpiryCol IS NULL
       BEGIN
-        ALTER USER ${safeIdentifier} WITH PASSWORD = '${safePassword}';
+        THROW 50001, N'Thieu cot VerificationCode/CodeExpiredAt (hoac CodeExpireAt) trong bang NHAN_VIEN', 1;
       END
+
+      DECLARE @sql NVARCHAR(MAX) = N'
+        UPDATE NHAN_VIEN
+        SET VerificationCode = NULL,
+            ' + QUOTENAME(@ExpiryCol) + N' = NULL
+        WHERE EMAIL = @Email
+      ';
+
+      EXEC sp_executesql
+        @sql,
+        N'@Email NVARCHAR(100)',
+        @Email = @Email;
     `);
   },
 
