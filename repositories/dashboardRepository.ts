@@ -205,6 +205,105 @@ const dashboardRepository = {
     `);
     return result.recordset;
   },
+
+  // 11. Dashboard nhân sự realtime dùng CTE (bảng ảo)
+  getRealtimeDashboard: async () => {
+    const request = appPool.request();
+    request.multiple = true;
+
+    const result = await request.query(`
+      ;WITH EmployeeStats AS (
+        SELECT
+          COUNT(1) AS TotalEmployees,
+          SUM(CASE WHEN ISNULL(TrangThaiLamViec, N'') = N'Chính thức' THEN 1 ELSE 0 END) AS OfficialEmployees,
+          SUM(CASE WHEN ISNULL(TrangThaiLamViec, N'') <> N'Chính thức' THEN 1 ELSE 0 END) AS NonOfficialEmployees,
+          AVG(CAST(ISNULL(LUONG, 0) AS FLOAT)) AS AvgSalary,
+          SUM(CAST(ISNULL(LUONG, 0) AS FLOAT)) AS TotalSalary
+        FROM NHAN_VIEN
+      ),
+      ProjectStats AS (
+        SELECT
+          COUNT(1) AS TotalProjects,
+          SUM(CASE WHEN ISNULL(TrangThai, N'') = N'Đang thực hiện' THEN 1 ELSE 0 END) AS ActiveProjects,
+          SUM(CASE WHEN ISNULL(TrangThai, N'') = N'Hoàn thành' THEN 1 ELSE 0 END) AS CompletedProjects
+        FROM DU_AN
+      ),
+      LeaveStats AS (
+        SELECT
+          SUM(CASE WHEN ISNULL(TrangThaiDuyet, N'') = N'Chờ duyệt' THEN 1 ELSE 0 END) AS PendingLeaves,
+          SUM(CASE WHEN ISNULL(TrangThaiDuyet, N'') = N'Đã duyệt' THEN 1 ELSE 0 END) AS ApprovedLeaves
+        FROM DON_NGHI_PHEP
+      )
+      SELECT
+        es.TotalEmployees,
+        es.OfficialEmployees,
+        es.NonOfficialEmployees,
+        CAST(ISNULL(es.AvgSalary, 0) AS DECIMAL(18, 2)) AS AvgSalary,
+        CAST(ISNULL(es.TotalSalary, 0) AS DECIMAL(18, 2)) AS TotalSalary,
+        ps.TotalProjects,
+        ps.ActiveProjects,
+        ps.CompletedProjects,
+        ISNULL(ls.PendingLeaves, 0) AS PendingLeaves,
+        ISNULL(ls.ApprovedLeaves, 0) AS ApprovedLeaves,
+        (SELECT COUNT(1) FROM PHONG_BAN) AS TotalDepartments,
+        GETDATE() AS GeneratedAt
+      FROM EmployeeStats es
+      CROSS JOIN ProjectStats ps
+      CROSS JOIN LeaveStats ls;
+
+      ;WITH DepartmentHeadcount AS (
+        SELECT
+          pb.MAPHG,
+          pb.TENPB,
+          COUNT(nv.MANV) AS EmployeeCount,
+          CAST(AVG(CAST(ISNULL(nv.LUONG, 0) AS FLOAT)) AS DECIMAL(18, 2)) AS AvgSalary
+        FROM PHONG_BAN pb
+        LEFT JOIN NHAN_VIEN nv ON nv.MAPHG = pb.MAPHG
+        GROUP BY pb.MAPHG, pb.TENPB
+      )
+      SELECT
+        MAPHG,
+        TENPB,
+        EmployeeCount,
+        ISNULL(AvgSalary, 0) AS AvgSalary
+      FROM DepartmentHeadcount
+      ORDER BY EmployeeCount DESC, MAPHG ASC;
+
+      ;WITH ProjectStatus AS (
+        SELECT
+          ISNULL(TrangThai, N'Không xác định') AS TrangThai,
+          COUNT(1) AS SoLuong
+        FROM DU_AN
+        GROUP BY ISNULL(TrangThai, N'Không xác định')
+      )
+      SELECT TrangThai, SoLuong
+      FROM ProjectStatus
+      ORDER BY SoLuong DESC;
+
+      ;WITH TodayAttendance AS (
+        SELECT
+          COUNT(DISTINCT CASE WHEN bcc.Ngay = CAST(GETDATE() AS DATE) THEN bcc.MaNV END) AS CheckedInToday,
+          COUNT(DISTINCT nv.MANV) AS TotalEmployees
+        FROM NHAN_VIEN nv
+        LEFT JOIN BAN_CHAM_CONG bcc ON bcc.MaNV = nv.MANV
+      )
+      SELECT
+        CheckedInToday,
+        TotalEmployees,
+        CASE
+          WHEN TotalEmployees = 0 THEN CAST(0 AS DECIMAL(5, 2))
+          ELSE CAST((CheckedInToday * 100.0) / TotalEmployees AS DECIMAL(5, 2))
+        END AS AttendanceRate
+      FROM TodayAttendance;
+    `);
+
+    return {
+      quickStats: result.recordsets?.[0]?.[0] || {},
+      departmentHeadcount: result.recordsets?.[1] || [],
+      projectStatus: result.recordsets?.[2] || [],
+      attendanceToday: result.recordsets?.[3]?.[0] || {},
+    };
+  },
 };
 
 export default dashboardRepository;

@@ -268,6 +268,56 @@ Tính năng Dashboard cung cấp các endpoint để lấy thống kê và báo 
 
 ---
 
+### 12. **GET** `/api/dashboard/realtime`
+
+**Mô tả:** Dashboard nhân sự realtime (dùng CTE/bảng ảo SQL), trả nhanh các số liệu tổng hợp hiện tại.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Lấy dashboard nhân sự realtime thành công",
+  "data": {
+    "quickStats": {
+      "TotalEmployees": 50,
+      "OfficialEmployees": 42,
+      "NonOfficialEmployees": 8,
+      "AvgSalary": 12500000,
+      "TotalSalary": 625000000,
+      "TotalProjects": 20,
+      "ActiveProjects": 12,
+      "CompletedProjects": 8,
+      "PendingLeaves": 3,
+      "ApprovedLeaves": 18,
+      "TotalDepartments": 8,
+      "GeneratedAt": "2026-03-30T14:10:00.000Z"
+    },
+    "departmentHeadcount": [
+      {
+        "MAPHG": 1,
+        "TENPB": "Phòng IT",
+        "EmployeeCount": 15,
+        "AvgSalary": 15000000
+      }
+    ],
+    "projectStatus": [
+      {
+        "TrangThai": "Đang thực hiện",
+        "SoLuong": 12
+      }
+    ],
+    "attendanceToday": {
+      "CheckedInToday": 41,
+      "TotalEmployees": 50,
+      "AttendanceRate": 82.0
+    }
+  }
+}
+```
+
+---
+
 ### 9. **GET** `/api/dashboard/project-trendline`
 
 **Mô tả:** Lấy trendline dự án (số dự án theo trạng thái)

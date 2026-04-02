@@ -374,6 +374,22 @@ const userRepository = {
             VALUES (@MaNV, @Email, @HoTen, @MaPhg, @Luong, @ChucVu, 1)
           `);
             }
+            else {
+                await new db_1.sql.Request(transaction)
+                    .input("Email", db_1.sql.NVarChar(100), payload.email)
+                    .input("HoTen", db_1.sql.NVarChar(200), effectiveHoTen)
+                    .input("MaPhg", db_1.sql.Int, effectiveMaPhg)
+                    .input("Luong", db_1.sql.Decimal(18, 2), effectiveLuong)
+                    .input("ChucVu", db_1.sql.NVarChar(100), effectiveChucVu).query(`
+            UPDATE [dbo].[NHAN_VIEN]
+            SET HOTEN = @HoTen,
+                MAPHG = @MaPhg,
+                LUONG = @Luong,
+                CHUCVU = @ChucVu,
+                IsVerified = 1
+            WHERE EMAIL = @Email
+          `);
+            }
             await new db_1.sql.Request(transaction).input("Email", db_1.sql.NVarChar(100), payload.email).query(`
           DELETE FROM DANG_KY_CHO
           WHERE Email = @Email

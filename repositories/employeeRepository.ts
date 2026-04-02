@@ -160,12 +160,55 @@ const employeeRepository = {
 
   // 5. Xóa/Khóa nhân viên (cập nhật status)
   deleteEmployee: async (manv) => {
-    const request = appPool.request();
-    // Có thể xóa login hoặc chỉ cập nhật status (tùy DB design)
-    // Variant 1: Xóa login (khóa user login)
-    return await request
-      .input("MaNV", sql.NVarChar, manv)
-      .query(`DELETE FROM NHAN_VIEN WHERE MANV = @MaNV`);
+    const transaction = appPool.transaction();
+    await transaction.begin();
+
+    try {
+      const employeeResult = await new sql.Request(transaction).input(
+        "MaNV",
+        sql.NVarChar,
+        manv,
+      ).query(`
+          SELECT TOP 1 MANV, EMAIL
+          FROM NHAN_VIEN
+          WHERE MANV = @MaNV
+        `);
+
+      const employee = employeeResult.recordset[0];
+      if (!employee) {
+        await transaction.rollback();
+        throw new Error("Nhân viên không tồn tại");
+      }
+
+      await new sql.Request(transaction).input("MaNV", sql.NVarChar, manv)
+        .query(`
+          DELETE FROM PHAN_CONG_DU_AN
+          WHERE MaNV = @MaNV
+        `);
+
+      await new sql.Request(transaction).input("MaNV", sql.NVarChar, manv)
+        .query(`
+          DELETE FROM NHAN_VIEN
+          WHERE MANV = @MaNV
+        `);
+
+      if (employee.EMAIL) {
+        const safeIdentifier = `[${String(employee.EMAIL).replace(/]/g, "]]")}]`;
+        const safeEmailLiteral = String(employee.EMAIL).replace(/'/g, "''");
+
+        await new sql.Request(transaction).query(`
+          IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
+          BEGIN
+            DROP USER ${safeIdentifier};
+          END
+        `);
+      }
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback().catch(() => undefined);
+      throw error;
+    }
   },
 
   // 6. Đổi mật khẩu nhân viên

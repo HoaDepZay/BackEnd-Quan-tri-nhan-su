@@ -119,5 +119,6 @@ router.get("/project-trendline", dashboardController.getProjectTrendline);
  * @apiSuccess {Object} data Đối tượng chứa tất cả thống kê chi tiết
  */
 router.get("/report", dashboardController.getDashboardReport);
+router.get("/realtime", dashboardController.getRealtimeDashboard);
 
 export default router;

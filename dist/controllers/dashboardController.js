@@ -149,5 +149,18 @@ const dashboardController = {
             });
         }
     },
+    // 12. GET /api/dashboard/realtime - Dashboard nhân sự realtime
+    getRealtimeDashboard: async (req, res) => {
+        try {
+            const result = await dashboardService_1.default.getRealtimeDashboard();
+            return res.status(200).json(result);
+        }
+        catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: error.message,
+            });
+        }
+    },
 };
 exports.default = dashboardController;

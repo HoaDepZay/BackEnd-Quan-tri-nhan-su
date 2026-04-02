@@ -184,5 +184,19 @@ const dashboardService = {
             throw new Error("Lỗi lấy báo cáo dashboard: " + error.message);
         }
     },
+    // 12. Lấy Dashboard nhân sự realtime
+    getRealtimeDashboard: async () => {
+        try {
+            const realtimeData = await dashboardRepository_1.default.getRealtimeDashboard();
+            return {
+                success: true,
+                message: "Lấy dashboard nhân sự realtime thành công",
+                data: realtimeData,
+            };
+        }
+        catch (error) {
+            throw new Error("Lỗi lấy dashboard realtime: " + error.message);
+        }
+    },
 };
 exports.default = dashboardService;

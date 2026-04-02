@@ -427,6 +427,21 @@ const userRepository = {
             INSERT INTO [dbo].[NHAN_VIEN] (MANV, EMAIL, HOTEN, MAPHG, LUONG, CHUCVU, IsVerified)
             VALUES (@MaNV, @Email, @HoTen, @MaPhg, @Luong, @ChucVu, 1)
           `);
+      } else {
+        await new sql.Request(transaction)
+          .input("Email", sql.NVarChar(100), payload.email)
+          .input("HoTen", sql.NVarChar(200), effectiveHoTen)
+          .input("MaPhg", sql.Int, effectiveMaPhg)
+          .input("Luong", sql.Decimal(18, 2), effectiveLuong)
+          .input("ChucVu", sql.NVarChar(100), effectiveChucVu).query(`
+            UPDATE [dbo].[NHAN_VIEN]
+            SET HOTEN = @HoTen,
+                MAPHG = @MaPhg,
+                LUONG = @Luong,
+                CHUCVU = @ChucVu,
+                IsVerified = 1
+            WHERE EMAIL = @Email
+          `);
       }
 
       await new sql.Request(transaction).input(
