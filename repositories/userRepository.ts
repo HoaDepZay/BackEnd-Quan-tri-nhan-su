@@ -12,31 +12,16 @@ const userRepository = {
   // 1. Tạo hoặc xóa contained database user ở DB nghiệp vụ
   handleDatabaseUser: async (email, password, action) => {
     const normalizedAction = String(action || "").toUpperCase();
-    const safeIdentifier = `[${String(email).replace(/]/g, "]]")}]`;
-    const safeEmailLiteral = String(email).replace(/'/g, "''");
-    const safePassword = String(password).replace(/'/g, "''");
-
-    if (normalizedAction === "CREATE") {
-      await appPool.request().query(
-        `IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
-         BEGIN
-           CREATE USER ${safeIdentifier} WITH PASSWORD = '${safePassword}';
-         END`,
-      );
-      return;
+    if (normalizedAction !== "CREATE" && normalizedAction !== "DROP") {
+      throw new Error("Action không hợp lệ. Chỉ hỗ trợ CREATE hoặc DROP");
     }
 
-    if (normalizedAction === "DROP") {
-      await appPool.request().query(
-        `IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'${safeEmailLiteral}')
-         BEGIN
-           DROP USER ${safeIdentifier};
-         END`,
-      );
-      return;
-    }
-
-    throw new Error("Action không hợp lệ. Chỉ hỗ trợ CREATE hoặc DROP");
+    await appPool
+      .request()
+      .input("Email", sql.NVarChar(100), email)
+      .input("Password", sql.NVarChar(255), password)
+      .input("Action", sql.VarChar(10), normalizedAction)
+      .execute("sp_handleDatabaseUser");
   },
 
   // 2. Lưu thông tin đăng ký tạm + OTP vào DANG_KY_CHO
@@ -51,31 +36,8 @@ const userRepository = {
       .input("Luong", sql.Decimal(18, 2), data.luong ?? 0)
       .input("ChucVu", sql.NVarChar(100), data.chucvu || "Nhân viên")
       .input("OtpCode", sql.NVarChar(6), data.otpCode)
-      .input("ExpiredAt", sql.DateTime, data.expiredAt).query(`
-        MERGE [dbo].[DANG_KY_CHO] AS target
-        USING (SELECT @Email AS Email) AS source
-        ON (target.Email = source.Email)
-        WHEN MATCHED THEN
-            UPDATE SET
-              MaNV = @MaNV,
-              PasswordMaHoa = @PassEnc,
-              HoTen = @HoTen,
-              MaPhg = @MaPhg,
-              Luong = @Luong,
-              ChucVu = @ChucVu,
-              OtpCode = @OtpCode,
-              ExpiredAt = @ExpiredAt,
-              CreatedAt = GETDATE(),
-              RegistrationStatus = '${REGISTRATION_STATUS.PENDING_OTP}',
-              OtpVerifiedAt = NULL,
-              ApprovedAt = NULL,
-              ApprovedBy = NULL,
-              RejectReason = NULL,
-              RejectedAt = NULL
-        WHEN NOT MATCHED THEN
-            INSERT (MaNV, Email, PasswordMaHoa, HoTen, MaPhg, Luong, ChucVu, OtpCode, ExpiredAt, RegistrationStatus, OtpVerifiedAt, ApprovedAt, ApprovedBy, RejectReason, RejectedAt)
-            VALUES (@MaNV, @Email, @PassEnc, @HoTen, @MaPhg, @Luong, @ChucVu, @OtpCode, @ExpiredAt, '${REGISTRATION_STATUS.PENDING_OTP}', NULL, NULL, NULL, NULL, NULL);
-      `);
+      .input("ExpiredAt", sql.DateTime, data.expiredAt)
+      .execute("sp_savePendingRegistration");
 
     return {
       Success: 1,

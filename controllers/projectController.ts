@@ -1,6 +1,62 @@
 import projectService from "../services/projectService";
 
 const projectController = {
+  getProjectTasksForMember: async (req, res) => {
+    try {
+      const { id: maDa } = req.params;
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const result = await projectService.getProjectTasksForMember(
+        maDa,
+        requesterMaNv,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+  },
+
+  createTaskForMember: async (req, res) => {
+    try {
+      const { id: maDa } = req.params;
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const result = await projectService.createTaskForMember(
+        maDa,
+        requesterMaNv,
+        req.body,
+      );
+      return res.status(201).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  updateTaskForMember: async (req, res) => {
+    try {
+      const { id: maDa, taskId } = req.params;
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const result = await projectService.updateTaskForMember(
+        maDa,
+        taskId,
+        requesterMaNv,
+        req.body,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  getMyJoinedProjectsWithMembers: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const result =
+        await projectService.getMyJoinedProjectsWithMembers(requesterMaNv);
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+  },
+
   getAllProjects: async (req, res) => {
     try {
       const result = await projectService.getAllProjects();
@@ -19,7 +75,7 @@ const projectController = {
       return res.status(404).json({ success: false, message: error.message });
     }
   },
-  
+
   getEmployeeProjects: async (req, res) => {
     try {
       const { id } = req.params; // Lấy employeeId
@@ -63,7 +119,11 @@ const projectController = {
     try {
       const { id: maDa } = req.params;
       const { manv, vaitroduan } = req.body;
-      const result = await projectService.addProjectMember(maDa, manv, vaitroduan);
+      const result = await projectService.addProjectMember(
+        maDa,
+        manv,
+        vaitroduan,
+      );
       return res.status(201).json(result);
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
@@ -78,7 +138,7 @@ const projectController = {
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
     }
-  }
+  },
 };
 
 export default projectController;

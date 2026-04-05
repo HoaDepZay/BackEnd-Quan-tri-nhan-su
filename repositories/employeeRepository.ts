@@ -4,51 +4,18 @@ const employeeRepository = {
   // 1. Lấy danh sách nhâ n viên (có phân trang + tìm kiếm)
   getAllEmployees: async (pageNum = 1, pageSize = 10, searchKeyword = "") => {
     const request = appPool.request();
-    const offset = (pageNum - 1) * pageSize;
-
-    let query = `
-      SELECT 
-        nv.MANV, 
-        nv.HOTEN, 
-        nv.EMAIL, 
-        nv.CHUCVU, 
-        nv.LUONG,
-        pb.TENPB,
-        nv.MAPHG,
-        nv.NgaySinh AS NGAYSINH,
-        nv.GioiTinh AS GIOITINH,
-        nv.DiaChi AS DIACHINHAN,
-        nv.NgayTuyenDung AS NGAYVAOLAM
-      FROM NHAN_VIEN nv
-      LEFT JOIN PHONG_BAN pb ON nv.MAPHG = pb.MAPHG
-    `;
+    request.input("PageNum", sql.Int, pageNum);
+    request.input("PageSize", sql.Int, pageSize);
 
     if (searchKeyword && searchKeyword.trim() !== "") {
-      query += ` WHERE nv.HOTEN LIKE @searchKeyword OR nv.MANV LIKE @searchKeyword OR nv.EMAIL LIKE @searchKeyword`;
-      request.input("searchKeyword", sql.NVarChar, `%${searchKeyword}%`);
+      request.input("SearchKeyword", sql.NVarChar(100), searchKeyword.trim());
     }
 
-    query += ` ORDER BY nv.MANV OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`;
-
-    request.input("offset", sql.Int, offset);
-    request.input("pageSize", sql.Int, pageSize);
-
-    const result = await request.query(query);
-
-    // Lấy tổng số nhân viên để tính total pages
-    const countRequest = appPool.request();
-    if (searchKeyword && searchKeyword.trim() !== "") {
-      countRequest.input("searchKeyword", sql.NVarChar, `%${searchKeyword}%`);
-    }
-    const countQuery = searchKeyword?.trim()
-      ? `SELECT COUNT(*) as total FROM NHAN_VIEN WHERE HOTEN LIKE @searchKeyword OR MANV LIKE @searchKeyword OR EMAIL LIKE @searchKeyword`
-      : `SELECT COUNT(*) as total FROM NHAN_VIEN`;
-
-    const countResult = await countRequest.query(countQuery);
-    const totalRecords = countResult.recordset[0].total;
+    const result = await request.execute("sp_getAllEmployees");
+    const totalRecords = result.recordsets?.[1]?.[0]?.TotalRecords || 0;
 
     return {
-      data: result.recordset,
+      data: result.recordsets?.[0] || [],
       pagination: {
         pageNum,
         pageSize,
@@ -180,17 +147,9 @@ const employeeRepository = {
         throw new Error("Nhân viên không tồn tại");
       }
 
-      await new sql.Request(transaction).input("MaNV", sql.NVarChar, manv)
-        .query(`
-          DELETE FROM PHAN_CONG_DU_AN
-          WHERE MaNV = @MaNV
-        `);
-
-      await new sql.Request(transaction).input("MaNV", sql.NVarChar, manv)
-        .query(`
-          DELETE FROM NHAN_VIEN
-          WHERE MANV = @MaNV
-        `);
+      await new sql.Request(transaction)
+        .input("MaNV", sql.NVarChar, manv)
+        .execute("sp_deleteEmployee");
 
       if (employee.EMAIL) {
         const safeIdentifier = `[${String(employee.EMAIL).replace(/]/g, "]]")}]`;

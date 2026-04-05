@@ -53,31 +53,23 @@ const departmentRepository = {
       .input("MaPhg", sql.Int, data.maphg)
       .input("TenPb", sql.NVarChar, data.tenpb)
       .input("MaTruongPhg", sql.VarChar, data.matruongphg || null)
-      .input("NgThanhLap", sql.DateTime, data.ng_thanhlap || new Date()).query(`
-        INSERT INTO PHONG_BAN (MAPHG, TENPB, MaTruongPhg, NG_THANHLAP)
-        VALUES (@MaPhg, @TenPb, @MaTruongPhg, @NgThanhLap)
-      `);
+      .input("NgThanhLap", sql.DateTime, data.ng_thanhlap || new Date())
+      .execute("sp_createDepartment");
   },
 
   // 5. Cập nhật phòng ban
   updateDepartment: async (maPhg, data) => {
     const request = appPool.request();
-    let updateFields = [];
 
     if (data.tenpb !== undefined) {
-      updateFields.push("TENPB = @TenPb");
       request.input("TenPb", sql.NVarChar, data.tenpb);
     }
     if (data.matruongphg !== undefined) {
-      updateFields.push("MaTruongPhg = @MaTruongPhg");
       request.input("MaTruongPhg", sql.VarChar, data.matruongphg);
     }
 
-    if (updateFields.length === 0) return;
-
     request.input("MaPhg", sql.Int, maPhg);
-    const query = `UPDATE PHONG_BAN SET ${updateFields.join(", ")} WHERE MAPHG = @MaPhg`;
-    await request.query(query);
+    await request.execute("sp_updateDepartment");
   },
 
   // 6. Xóa phòng ban
