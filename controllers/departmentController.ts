@@ -47,7 +47,41 @@ const departmentController = {
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
     }
-  }
+  },
+
+  getEmployeeDepartments: async (req, res) => {
+    try {
+      const { id } = req.params; // maNv
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const requesterRole = req.user?.userInfo?.role;
+
+      const result = await departmentService.getEmployeeDepartments(
+        id,
+        requesterMaNv,
+        requesterRole,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+  },
+
+  getEmployeeDepartmentWithMembers: async (req, res) => {
+    try {
+      const { id } = req.params; // maNv
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const requesterRole = req.user?.userInfo?.role;
+
+      const result = await departmentService.getEmployeeDepartmentWithMembers(
+        id,
+        requesterMaNv,
+        requesterRole,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+  },
 };
 
 export default departmentController;

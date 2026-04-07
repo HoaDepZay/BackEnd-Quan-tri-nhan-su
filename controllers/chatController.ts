@@ -1,0 +1,133 @@
+import chatService from "../services/chatService";
+
+const chatController = {
+  getMyRooms: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const result = await chatService.listMyRooms(requesterMaNv);
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  getOrCreateDirectRoom: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const { targetMaNv } = req.body;
+      const result = await chatService.getOrCreateDirectRoom(
+        requesterMaNv,
+        targetMaNv,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  getRoomMessages: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const { roomId } = req.params;
+      const { limit = 50 } = req.query;
+      const result = await chatService.getRoomMessagesForMember(
+        roomId,
+        requesterMaNv,
+        limit,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+  },
+
+  sendMessage: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const { roomId } = req.params;
+      const { noiDung } = req.body;
+      const result = await chatService.sendMessageToRoom(
+        roomId,
+        requesterMaNv,
+        noiDung,
+      );
+      return res.status(201).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  createCustomGroup: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const result = await chatService.createCustomGroup(
+        requesterMaNv,
+        req.body,
+      );
+      return res.status(201).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  addMemberToCustomGroup: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const { roomId } = req.params;
+      const { maNv } = req.body;
+      const result = await chatService.addMemberToCustomGroup(
+        roomId,
+        requesterMaNv,
+        maNv,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  removeMemberFromCustomGroup: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const { roomId, memberId } = req.params;
+      const result = await chatService.removeMemberFromCustomGroup(
+        roomId,
+        requesterMaNv,
+        memberId,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  },
+
+  getOrCreateProjectRoom: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const { projectId } = req.params;
+      const result = await chatService.getOrCreateProjectRoomForMember(
+        projectId,
+        requesterMaNv,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+  },
+
+  getOrCreateDepartmentRoom: async (req, res) => {
+    try {
+      const requesterMaNv = req.user?.userInfo?.manv;
+      const { departmentId } = req.params;
+      const result = await chatService.getOrCreateDepartmentRoomForMember(
+        departmentId,
+        requesterMaNv,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+  },
+};
+
+export default chatController;

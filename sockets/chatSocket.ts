@@ -1,0 +1,145 @@
+import { Server, Socket } from "socket.io";
+import { verifyToken } from "../utils/jwtHelper";
+import chatRepository from "../repositories/chatRepository";
+import chatService from "../services/chatService";
+
+type AuthenticatedSocket = Socket & {
+  user?: {
+    manv: string;
+    email?: string;
+    role?: string;
+  };
+};
+
+const ROOM_CHANNEL_PREFIX = "chat_room_";
+
+const toRoomChannel = (maPhong: number | string) =>
+  `${ROOM_CHANNEL_PREFIX}${String(maPhong)}`;
+
+const extractAccessToken = (socket: Socket): string | null => {
+  const fromAuth = socket.handshake.auth?.token;
+  if (typeof fromAuth === "string" && fromAuth.trim()) {
+    return fromAuth.trim();
+  }
+
+  const authHeader = socket.handshake.headers?.authorization;
+  if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7).trim();
+  }
+
+  return null;
+};
+
+const setupChatSocket = (io: Server) => {
+  io.use((socket: AuthenticatedSocket, next) => {
+    try {
+      const token = extractAccessToken(socket);
+      if (!token) {
+        return next(new Error("Thiếu access token"));
+      }
+
+      const decoded: any = verifyToken(token);
+      const manv = String(decoded?.userInfo?.manv || "").trim();
+      if (!manv) {
+        return next(new Error("Token không chứa mã nhân viên hợp lệ"));
+      }
+
+      socket.user = {
+        manv,
+        email: decoded?.userInfo?.email,
+        role: decoded?.userInfo?.role,
+      };
+
+      return next();
+    } catch (error: any) {
+      return next(new Error(`Xác thực socket thất bại: ${error.message}`));
+    }
+  });
+
+  io.on("connection", (socket: AuthenticatedSocket) => {
+    const requesterMaNv = socket.user?.manv || "";
+
+    socket.on("chat:join_room", async (payload, ack) => {
+      try {
+        const maPhong = Number(payload?.maPhong);
+        if (!maPhong) {
+          throw new Error("Mã phòng không hợp lệ");
+        }
+
+        const isMember = await chatRepository.isRoomMember(
+          maPhong,
+          requesterMaNv,
+        );
+        if (!isMember) {
+          throw new Error("Bạn không phải thành viên của phòng chat");
+        }
+
+        const channel = toRoomChannel(maPhong);
+        await socket.join(channel);
+
+        if (typeof ack === "function") {
+          ack({ success: true, maPhong, channel });
+        }
+      } catch (error: any) {
+        if (typeof ack === "function") {
+          ack({ success: false, message: error.message });
+        }
+      }
+    });
+
+    socket.on("chat:leave_room", async (payload, ack) => {
+      try {
+        const maPhong = Number(payload?.maPhong);
+        if (!maPhong) {
+          throw new Error("Mã phòng không hợp lệ");
+        }
+
+        await socket.leave(toRoomChannel(maPhong));
+
+        if (typeof ack === "function") {
+          ack({ success: true, maPhong });
+        }
+      } catch (error: any) {
+        if (typeof ack === "function") {
+          ack({ success: false, message: error.message });
+        }
+      }
+    });
+
+    socket.on("chat:send_message", async (payload, ack) => {
+      try {
+        const maPhong = Number(payload?.maPhong);
+        const noiDung = String(payload?.noiDung || "");
+
+        const result = await chatService.sendMessageToRoom(
+          maPhong,
+          requesterMaNv,
+          noiDung,
+        );
+
+        const message = result?.data;
+        if (!message) {
+          throw new Error("Không thể gửi tin nhắn");
+        }
+
+        const outgoing = {
+          ...message,
+          maPhong,
+          maNvGui: requesterMaNv,
+        };
+
+        io.to(toRoomChannel(maPhong)).emit("chat:new_message", outgoing);
+
+        if (typeof ack === "function") {
+          ack({ success: true, data: outgoing });
+        }
+      } catch (error: any) {
+        if (typeof ack === "function") {
+          ack({ success: false, message: error.message });
+        }
+      }
+    });
+  });
+};
+
+export default setupChatSocket;

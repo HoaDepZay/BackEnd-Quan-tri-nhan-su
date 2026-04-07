@@ -38,13 +38,8 @@ router.put(
   projectController.updateTaskForMember,
 );
 
-// Lấy chi tiết dự án & thành viên
-router.get(
-  "/:id",
-  withUserConnection,
-  requireAdmin,
-  projectController.getProjectById,
-);
+// Lấy chi tiết dự án & thành viên (nhân viên tham gia dự án hoặc admin)
+router.get("/:id", withUserConnection, projectController.getProjectById);
 
 // Thêm dự án mới
 router.post(
@@ -58,7 +53,6 @@ router.post(
 router.get(
   "/employee/:id",
   withUserConnection,
-  requireAdmin,
   projectController.getEmployeeProjects,
 );
 
@@ -88,7 +82,6 @@ router.post(
 router.delete(
   "/:id/members/:employeeId",
   withUserConnection,
-  requireAdmin,
   projectController.removeProjectMember,
 );
 

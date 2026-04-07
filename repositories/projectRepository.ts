@@ -257,7 +257,7 @@ const projectRepository = {
   // 5. Tạo dự án mới
   createProject: async (data) => {
     const request = appPool.request();
-    await request
+    const result = await request
       .input("TenDA", sql.NVarChar, data.tenda)
       .input("MoTa", sql.NVarChar, data.mota || null)
       .input("NgayBatDau", sql.Date, data.ngaybatdau || new Date())
@@ -265,8 +265,11 @@ const projectRepository = {
       .input("TrangThai", sql.NVarChar, data.trangthai || "Đang lên kế hoạch")
       .query(`
         INSERT INTO DU_AN (TENDA, MoTa, NgayBatDau, NgayKetThuc, TrangThai)
+        OUTPUT INSERTED.MADA, INSERTED.TENDA, INSERTED.MoTa, INSERTED.NgayBatDau, INSERTED.NgayKetThuc, INSERTED.TrangThai
         VALUES (@TenDA, @MoTa, @NgayBatDau, @NgayKetThuc, @TrangThai)
       `);
+
+    return result.recordset[0] || null;
   },
 
   // 6. Sửa dự án
@@ -302,6 +305,22 @@ const projectRepository = {
     await request.query(query);
   },
 
+  // 7a. Xóa danh sách nhiệm vụ của dự án
+  deleteProjectTasks: async (maDa) => {
+    const request = appPool.request();
+    await request
+      .input("MaDA", sql.Int, maDa)
+      .query(`DELETE FROM NHIEM_VU WHERE MaDA = @MaDA`);
+  },
+
+  // 7b. Xóa phân công nhân viên của dự án
+  deleteProjectAssignments: async (maDa) => {
+    const request = appPool.request();
+    await request
+      .input("MaDA", sql.Int, maDa)
+      .query(`DELETE FROM PHAN_CONG_DU_AN WHERE MaDA = @MaDA`);
+  },
+
   // 7. Xóa dự án
   deleteProject: async (maDa) => {
     const request = appPool.request();
@@ -324,11 +343,42 @@ const projectRepository = {
 
   // 9. Xóa thành viên khỏi dự án
   removeProjectMember: async (maDa, maNv) => {
-    const request = appPool.request();
-    await request
-      .input("MaDA", sql.Int, maDa)
-      .input("MaNV", sql.VarChar, maNv)
-      .query(`DELETE FROM PHAN_CONG_DU_AN WHERE MaDA = @MaDA AND MaNV = @MaNV`);
+    const transaction = appPool.transaction();
+    await transaction.begin();
+
+    try {
+      const request = new sql.Request(transaction);
+      const result = await request
+        .input("MaDA", sql.Int, maDa)
+        .input("MaNV", sql.VarChar, maNv).query(`
+          IF OBJECT_ID(N'dbo.NHIEMVU', N'U') IS NOT NULL
+          BEGIN
+            DELETE FROM dbo.NHIEMVU
+            WHERE MaDA = @MaDA AND MaNV = @MaNV;
+          END
+
+          IF OBJECT_ID(N'dbo.NHIEM_VU', N'U') IS NOT NULL
+          BEGIN
+            DELETE FROM dbo.NHIEM_VU
+            WHERE MaDA = @MaDA AND MaNV = @MaNV;
+          END
+
+          DELETE FROM PHAN_CONG_DU_AN
+          WHERE MaDA = @MaDA AND MaNV = @MaNV;
+
+          SELECT @@ROWCOUNT AS RemovedMemberCount;
+        `);
+
+      const removedMemberCount = result.recordset?.[0]?.RemovedMemberCount || 0;
+      if (removedMemberCount === 0) {
+        throw new Error("Nhân viên không tồn tại trong dự án");
+      }
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback().catch(() => undefined);
+      throw error;
+    }
   },
 };
 

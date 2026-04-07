@@ -4,7 +4,21 @@ import withUserConnection, { requireAdmin } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
-// Lấy danh sách phòng ban
+// Lấy chi tiết phòng ban của nhân viên chỉ định (kèm danh sách nhân viên)
+router.get(
+  "/employee/:id/detail",
+  withUserConnection,
+  departmentController.getEmployeeDepartmentWithMembers,
+);
+
+// Lấy danh sách phòng ban của nhân viên chỉ định (không cần admin)
+router.get(
+  "/employee/:id",
+  withUserConnection,
+  departmentController.getEmployeeDepartments,
+);
+
+// Lấy danh sách phòng ban (admin)
 router.get(
   "/",
   withUserConnection,
@@ -12,7 +26,7 @@ router.get(
   departmentController.getAllDepartments,
 );
 
-// Lấy chi tiết phòng ban theo ID
+// Lấy chi tiết phòng ban theo ID (admin)
 router.get(
   "/:id",
   withUserConnection,

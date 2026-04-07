@@ -1,4 +1,13 @@
 import projectRepository from "../repositories/projectRepository";
+import chatService from "./chatService";
+
+const normalizeProjectRole = (role: unknown) =>
+  String(role || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .trim();
 
 const normalizeRole = (value) =>
   String(value || "")
@@ -14,20 +23,6 @@ const projectService = {
       const normalizedMaDa = Number(maDa);
       if (!normalizedMaDa) {
         throw new Error("Mã dự án không hợp lệ");
-      }
-
-      if (!requesterMaNv || String(requesterMaNv).trim() === "") {
-        throw new Error("Không xác định được nhân viên gọi API.");
-      }
-
-      const isMember = await projectRepository.isEmployeeInProject(
-        normalizedMaDa,
-        requesterMaNv,
-      );
-      if (!isMember) {
-        throw new Error(
-          "Bạn không thuộc dự án này nên không có quyền xem task.",
-        );
       }
 
       const data = await projectRepository.getProjectTasks(normalizedMaDa);
@@ -207,12 +202,30 @@ const projectService = {
     }
   },
 
-  getProjectById: async (maDa) => {
+  getProjectById: async (maDa, requesterMaNv, requesterRole) => {
     try {
-      const project = await projectRepository.getProjectById(maDa);
+      const normalizedMaDa = Number(maDa);
+      if (!normalizedMaDa) {
+        throw new Error("Mã dự án không hợp lệ");
+      }
+
+      // Check quyền: admin hoặc nhân viên tham gia dự án
+      const isAdmin = normalizeRole(requesterRole) === "admin";
+      const isMember = await projectRepository.isEmployeeInProject(
+        normalizedMaDa,
+        requesterMaNv,
+      );
+
+      if (!isAdmin && !isMember) {
+        throw new Error(
+          "Bạn không có quyền xem dự án này. Chỉ thành viên dự án hoặc admin mới được xem.",
+        );
+      }
+
+      const project = await projectRepository.getProjectById(normalizedMaDa);
       if (!project) throw new Error("Dự án không tồn tại");
 
-      const members = await projectRepository.getProjectMembers(maDa);
+      const members = await projectRepository.getProjectMembers(normalizedMaDa);
 
       return {
         success: true,
@@ -241,8 +254,20 @@ const projectService = {
     try {
       if (!data.tenda) throw new Error("Tên dự án là bắt buộc.");
 
-      await projectRepository.createProject(data);
-      return { success: true, message: "Tạo dự án thành công" };
+      const createdProject = await projectRepository.createProject(data);
+
+      if (createdProject?.MADA) {
+        await chatService.ensureProjectRoomCreated(
+          createdProject.MADA,
+          createdProject.TENDA,
+        );
+      }
+
+      return {
+        success: true,
+        message: "Tạo dự án thành công",
+        data: createdProject || null,
+      };
     } catch (error) {
       throw new Error("Lỗi tạo dự án: " + error.message);
     }
@@ -277,12 +302,15 @@ const projectService = {
       const existing = await projectRepository.getProjectById(maDa);
       if (!existing) throw new Error("Dự án không tồn tại.");
 
-      const members = await projectRepository.getProjectMembers(maDa);
-      if (members.length > 0) {
-        throw new Error("Không thể xóa do dự án đang có thành viên.");
-      }
+      // Bước 1: Xóa danh sách nhiệm vụ của dự án
+      await projectRepository.deleteProjectTasks(maDa);
 
+      // Bước 2: Xóa phân công nhân viên của dự án
+      await projectRepository.deleteProjectAssignments(maDa);
+
+      // Bước 3: Xóa dự án
       await projectRepository.deleteProject(maDa);
+
       return { success: true, message: "Xóa dự án thành công" };
     } catch (error) {
       throw new Error("Lỗi xóa dự án: " + error.message);
@@ -297,6 +325,10 @@ const projectService = {
       if (!existing) throw new Error("Dự án không tồn tại.");
 
       await projectRepository.addProjectMember(maDa, maNv, vaiTro);
+
+      // Sync vào phòng chat với tên dự án
+      await chatService.syncProjectMemberAdded(maDa, maNv, existing.TENDA);
+
       return { success: true, message: "Thêm thành viên vào dự án thành công" };
     } catch (error) {
       // Catch foreign key error / duplicate member
@@ -307,9 +339,44 @@ const projectService = {
     }
   },
 
-  removeProjectMember: async (maDa, maNv) => {
+  removeProjectMember: async (maDa, maNv, requesterMaNv) => {
     try {
-      await projectRepository.removeProjectMember(maDa, maNv);
+      const normalizedMaDa = Number(maDa);
+      const normalizedTargetMaNv = String(maNv || "").trim();
+      const normalizedRequesterMaNv = String(requesterMaNv || "").trim();
+
+      if (!normalizedMaDa || !normalizedTargetMaNv) {
+        throw new Error("Thiếu mã dự án hoặc mã nhân viên cần xóa");
+      }
+
+      if (!normalizedRequesterMaNv) {
+        throw new Error("Không xác định được người gọi API");
+      }
+
+      const requesterRole = await projectRepository.getProjectMemberRole(
+        normalizedMaDa,
+        normalizedRequesterMaNv,
+      );
+      const isProjectLead =
+        normalizeProjectRole(requesterRole) ===
+        normalizeProjectRole("Trưởng dự án");
+
+      if (!isProjectLead) {
+        throw new Error(
+          "Bạn không có quyền xóa thành viên. Chỉ Trưởng dự án mới được phép thực hiện.",
+        );
+      }
+
+      await projectRepository.removeProjectMember(
+        normalizedMaDa,
+        normalizedTargetMaNv,
+      );
+
+      await chatService.syncProjectMemberRemoved(
+        normalizedMaDa,
+        normalizedTargetMaNv,
+      );
+
       return { success: true, message: "Xóa thành viên khỏi dự án thành công" };
     } catch (error) {
       throw new Error("Lỗi xóa thành viên: " + error.message);
